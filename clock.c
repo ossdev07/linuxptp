@@ -36,6 +36,7 @@
 #include "missing.h"
 #include "msg.h"
 #include "phc.h"
+#include "pi.h"
 #include "port.h"
 #include "sad.h"
 #include "servo.h"
@@ -725,6 +726,37 @@ static int clock_management_set(struct clock *c, struct port *p,
 		c->ext_gm_steps_removed = egpn->stepsRemoved;
 		*changed = 1;
 		respond = 1;
+		break;
+	case MID_SERVO_SETTINGS_NP:
+		{
+			struct servo_settings_np *ss = (struct servo_settings_np *) tlv->data;
+			struct servo *sv = clock_servo(c);
+			if (sv) {
+				servo_set_num_offset_values(sv, ss->numOffsetValues);
+				servo_set_offset_threshold(sv, ss->offsetThreshold);
+				respond = 1;
+				*changed = 1;
+			}
+		}
+		break;
+	case MID_PI_CONSTANTS_NP:
+		{
+			struct pi_constants_np *pc = (struct pi_constants_np *) tlv->data;
+			struct servo *sv = clock_servo(c);
+			if (sv) {
+				pi_servo_set_constants(sv, pc->kp, pc->ki, pc->interval);
+				respond = 1;
+				*changed = 1;
+			}
+		}
+		break;
+	case MID_CLOCK_FREQ_EST_NP:
+		{
+			struct clock_freq_est_np *cf = (struct clock_freq_est_np *) tlv->data;
+			clock_set_freq_est_interval(c, cf->freq_est_interval);
+			respond = 1;
+			*changed = 1;
+		}
 		break;
 	}
 	if (respond && !clock_management_get_response(c, p, id, req))

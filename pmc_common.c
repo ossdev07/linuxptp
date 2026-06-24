@@ -162,6 +162,10 @@ struct management_id idtab[] = {
 	{ "POWER_PROFILE_SETTINGS_NP", MID_POWER_PROFILE_SETTINGS_NP, do_set_action },
 	{ "CMLDS_INFO_NP", MID_CMLDS_INFO_NP, do_get_action },
 	{ "PORT_CORRECTIONS_NP", MID_PORT_CORRECTIONS_NP, do_set_action },
+	{ "SERVO_SETTINGS_NP", MID_SERVO_SETTINGS_NP, do_set_action },
+	{ "PI_CONSTANTS_NP", MID_PI_CONSTANTS_NP, do_set_action },
+	{ "TSPROC_FILTER_NP", MID_TSPROC_FILTER_NP, do_set_action },
+	{ "CLOCK_FREQ_EST_NP", MID_CLOCK_FREQ_EST_NP, do_set_action },
 };
 
 static void do_get_action(struct pmc *pmc, int action, int index, char *str)
@@ -437,6 +441,57 @@ static void do_set_action(struct pmc *pmc, int action, int index, char *str)
 		pcn.ingressLatency <<= 16;
 		pcn.delayAsymmetry <<= 16;
 		pmc_send_set_action(pmc, code, &pcn, sizeof(pcn));
+		break;
+	case MID_SERVO_SETTINGS_NP:
+		{
+			struct servo_settings_np ssv;
+			int cnt = sscanf(str, " %*s %*s %d %d",
+				&ssv.numOffsetValues, &ssv.offsetThreshold);
+			if (cnt != 2) {
+				fprintf(stderr, "%s SET needs 2 values\n",
+					idtab[index].name);
+				break;
+			}
+			pmc_send_set_action(pmc, code, &ssv, sizeof(ssv));
+		}
+		break;
+	case MID_PI_CONSTANTS_NP:
+		{
+			struct pi_constants_np pc;
+			int cnt = sscanf(str, " %*s %*s %lf %lf %lf",
+				&pc.kp, &pc.ki, &pc.interval);
+			if (cnt != 3) {
+				fprintf(stderr, "%s SET needs 3 values\n",
+					idtab[index].name);
+				break;
+			}
+			pmc_send_set_action(pmc, code, &pc, sizeof(pc));
+		}
+		break;
+	case MID_TSPROC_FILTER_NP:
+		{
+			struct tsproc_filter_np tf;
+			int cnt = sscanf(str, " %*s %*s %hu %d",
+				&tf.filter_type, &tf.filter_length);
+			if (cnt != 2) {
+				fprintf(stderr, "%s SET needs 2 values\n",
+					idtab[index].name);
+				break;
+			}
+			pmc_send_set_action(pmc, code, &tf, sizeof(tf));
+		}
+		break;
+	case MID_CLOCK_FREQ_EST_NP:
+		{
+			struct clock_freq_est_np cf;
+			int cnt = sscanf(str, " %*s %*s %d", &cf.freq_est_interval);
+			if (cnt != 1) {
+				fprintf(stderr, "%s SET needs 1 value\n",
+					idtab[index].name);
+				break;
+			}
+			pmc_send_set_action(pmc, code, &cf, sizeof(cf));
+		}
 		break;
 	}
 }
@@ -805,6 +860,19 @@ static int pmc_tlv_datalen(struct pmc *pmc, int id)
 		break;
 	case MID_PORT_CORRECTIONS_NP:
 		len += sizeof(struct port_corrections_np);
+
+	case MID_SERVO_SETTINGS_NP:
+		len += sizeof(struct servo_settings_np);
+		break;
+	case MID_PI_CONSTANTS_NP:
+		len += sizeof(struct pi_constants_np);
+		break;
+	case MID_TSPROC_FILTER_NP:
+		len += sizeof(struct tsproc_filter_np);
+		break;
+	case MID_CLOCK_FREQ_EST_NP:
+		len += sizeof(struct clock_freq_est_np);
+		break;
 		break;
 	case MID_LOG_ANNOUNCE_INTERVAL:
 	case MID_ANNOUNCE_RECEIPT_TIMEOUT:

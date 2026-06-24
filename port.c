@@ -1255,6 +1255,15 @@ static int port_management_set(struct port *target,
 		port_set_delay_asymmetry(target, pcn->delayAsymmetry);
 		respond = 1;
 		break;
+	case MID_TSPROC_FILTER_NP:
+		{
+			struct tsproc_filter_np *tf = (struct tsproc_filter_np *) tlv->data;
+			if (target->tsproc) {
+				if (tsproc_set_filter_length(target->tsproc, tf->filter_length) == 0)
+					respond = 1;
+			}
+		}
+		break;
 	}
 	if (respond && !port_management_get_response(target, ingress, id, req))
 		pr_err("%s: failed to send management set response", target->log_name);

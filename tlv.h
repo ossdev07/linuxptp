@@ -133,6 +133,12 @@ enum management_action {
 #define MID_CMLDS_INFO_NP				0xC00B
 #define MID_PORT_CORRECTIONS_NP				0xC00C
 
+/* Runtime tuning management IDs (non-standard NP range) */
+#define MID_SERVO_SETTINGS_NP				0xC00E
+#define MID_PI_CONSTANTS_NP				0xC00F
+#define MID_TSPROC_FILTER_NP				0xC010
+#define MID_CLOCK_FREQ_EST_NP				0xC011
+
 /* Management error ID values */
 #define MID_RESPONSE_TOO_BIG				0x0001
 #define MID_NO_SUCH_ID					0x0002
@@ -500,6 +506,26 @@ struct port_corrections_np {
 	Integer64 egressLatency;
 	Integer64 ingressLatency;
 	Integer64 delayAsymmetry;
+} PACKED;
+
+struct servo_settings_np {
+	Integer32 numOffsetValues;
+	Integer32 offsetThreshold;
+} PACKED;
+
+struct pi_constants_np {
+	double kp;
+	double ki;
+	double interval;
+} PACKED;
+
+struct tsproc_filter_np {
+	Enumeration16 filter_type;
+	Integer32 filter_length;
+} PACKED;
+
+struct clock_freq_est_np {
+	Integer32 freq_est_interval;
 } PACKED;
 
 /**

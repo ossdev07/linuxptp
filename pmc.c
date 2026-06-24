@@ -665,6 +665,34 @@ static void pmc_show(struct ptp_message *msg, FILE *fp)
 			pcn->ingressLatency >> 16,
 			pcn->delayAsymmetry >> 16);
 		break;
+	case MID_SERVO_SETTINGS_NP:
+		{
+			struct servo_settings_np *ss = (struct servo_settings_np *) mgt->data;
+			fprintf(fp, "SERVO_SETTINGS_NP " IFMT "numOffsetValues %d " IFMT "offsetThreshold %d",
+				ss->numOffsetValues, ss->offsetThreshold);
+		}
+		break;
+	case MID_PI_CONSTANTS_NP:
+		{
+			struct pi_constants_np *pc = (struct pi_constants_np *) mgt->data;
+			fprintf(fp, "PI_CONSTANTS_NP " IFMT "kp %.6f " IFMT "ki %.6f " IFMT "interval %.6f",
+				pc->kp, pc->ki, pc->interval);
+		}
+		break;
+	case MID_TSPROC_FILTER_NP:
+		{
+			struct tsproc_filter_np *tf = (struct tsproc_filter_np *) mgt->data;
+			fprintf(fp, "TSPROC_FILTER_NP " IFMT "filter_type %hu " IFMT "filter_length %d",
+				tf->filter_type, tf->filter_length);
+		}
+		break;
+	case MID_CLOCK_FREQ_EST_NP:
+		{
+			struct clock_freq_est_np *cf = (struct clock_freq_est_np *) mgt->data;
+			fprintf(fp, "CLOCK_FREQ_EST_NP " IFMT "freq_est_interval %d",
+				cf->freq_est_interval);
+		}
+		break;
 	case MID_LOG_ANNOUNCE_INTERVAL:
 		mtd = (struct management_tlv_datum *) mgt->data;
 		fprintf(fp, "LOG_ANNOUNCE_INTERVAL "

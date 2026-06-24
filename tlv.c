@@ -506,6 +506,42 @@ static int mgt_post_recv(struct management_tlv *m, uint16_t data_len,
 		net2host64(pcn->ingressLatency);
 		net2host64(pcn->delayAsymmetry);
 		break;
+	case MID_SERVO_SETTINGS_NP:
+		if (data_len != sizeof(struct servo_settings_np))
+			goto bad_length;
+		{
+			struct servo_settings_np *ss = (struct servo_settings_np *) m->data;
+			NTOHL(ss->numOffsetValues);
+			NTOHL(ss->offsetThreshold);
+		}
+		break;
+	case MID_PI_CONSTANTS_NP:
+		if (data_len != sizeof(struct pi_constants_np))
+			goto bad_length;
+		{
+			struct pi_constants_np *pc = (struct pi_constants_np *) m->data;
+			net2host64_unaligned(&pc->kp);
+			net2host64_unaligned(&pc->ki);
+			net2host64_unaligned(&pc->interval);
+		}
+		break;
+	case MID_TSPROC_FILTER_NP:
+		if (data_len != sizeof(struct tsproc_filter_np))
+			goto bad_length;
+		{
+			struct tsproc_filter_np *tf = (struct tsproc_filter_np *) m->data;
+			NTOHS(tf->filter_type);
+			NTOHL(tf->filter_length);
+		}
+		break;
+	case MID_CLOCK_FREQ_EST_NP:
+		if (data_len != sizeof(struct clock_freq_est_np))
+			goto bad_length;
+		{
+			struct clock_freq_est_np *cf = (struct clock_freq_est_np *) m->data;
+			NTOHL(cf->freq_est_interval);
+		}
+		break;
 	case MID_SAVE_IN_NON_VOLATILE_STORAGE:
 	case MID_RESET_NON_VOLATILE_STORAGE:
 	case MID_INITIALIZE:
@@ -715,6 +751,34 @@ static void mgt_pre_send(struct management_tlv *m, struct tlv_extra *extra)
 		host2net64(pcn->egressLatency);
 		host2net64(pcn->ingressLatency);
 		host2net64(pcn->delayAsymmetry);
+		break;
+	case MID_SERVO_SETTINGS_NP:
+		{
+			struct servo_settings_np *ss = (struct servo_settings_np *) m->data;
+			HTONL(ss->numOffsetValues);
+			HTONL(ss->offsetThreshold);
+		}
+		break;
+	case MID_PI_CONSTANTS_NP:
+		{
+			struct pi_constants_np *pc = (struct pi_constants_np *) m->data;
+			host2net64_unaligned(&pc->kp);
+			host2net64_unaligned(&pc->ki);
+			host2net64_unaligned(&pc->interval);
+		}
+		break;
+	case MID_TSPROC_FILTER_NP:
+		{
+			struct tsproc_filter_np *tf = (struct tsproc_filter_np *) m->data;
+			HTONS(tf->filter_type);
+			HTONL(tf->filter_length);
+		}
+		break;
+	case MID_CLOCK_FREQ_EST_NP:
+		{
+			struct clock_freq_est_np *cf = (struct clock_freq_est_np *) m->data;
+			HTONL(cf->freq_est_interval);
+		}
 		break;
 	}
 }
