@@ -19,6 +19,7 @@
 #ifndef HAVE_PORT_H
 #define HAVE_PORT_H
 
+#include <stdint.h>
 #include "dm.h"
 #include "fd.h"
 #include "foreign.h"
@@ -235,7 +236,7 @@ enum port_state port_state(struct port *port);
  * @return 	one of the @ref delay_mechanism values.
  */
 enum delay_mechanism port_delay_mechanism(struct port *port);
-
+void port_set_delay_asymmetry(struct port *p, int64_t delay_asymmetry);
 /**
  * Update a port's current state based on a given event.
  * @param p        A pointer previously obtained via port_open().

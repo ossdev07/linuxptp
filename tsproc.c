@@ -45,6 +45,7 @@ struct tsproc {
 
 	/* Delay filter */
 	struct filter *delay_filter;
+	enum filter_type delay_filter_type;
 };
 
 static int weighting(struct tsproc *tsp)
@@ -81,6 +82,7 @@ struct tsproc *tsproc_create(enum tsproc_mode mode,
 		return NULL;
 	}
 
+	tsp->delay_filter_type = delay_filter;
 	tsp->delay_filter = filter_create(delay_filter, filter_length);
 	if (!tsp->delay_filter) {
 		free(tsp);
@@ -239,4 +241,23 @@ void tsproc_reset(struct tsproc *tsp, int full)
 		filter_reset(tsp->delay_filter);
 		tsp->filtered_delay_valid = 0;
 	}
+}
+
+int tsproc_set_filter_length(struct tsproc *tsp, int filter_length)
+{
+	struct filter *new_filter;
+
+	if (!tsp || filter_length <= 0)
+		return -1;
+
+	new_filter = filter_create(tsp->delay_filter_type, filter_length);
+	if (!new_filter)
+		return -1;
+
+	filter_destroy(tsp->delay_filter);
+	tsp->delay_filter = new_filter;
+	filter_reset(tsp->delay_filter);
+	tsp->filtered_delay_valid = 0;
+
+	return 0;
 }

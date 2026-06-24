@@ -195,7 +195,7 @@ tmv_t clock_ingress_time(struct clock *c);
  *             implies a state decision event, zero otherwise.
  */
 int clock_manage(struct clock *c, struct port *p, struct ptp_message *msg);
-
+void clock_set_freq_est_interval(struct clock *c, int freq_est_interval);
 /**
  * Send notification about an event to all subscribers.
  * @param c      The clock instance.

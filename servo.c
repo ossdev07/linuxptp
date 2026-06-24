@@ -177,3 +177,21 @@ int servo_offset_threshold(struct servo *servo)
 {
 	return servo->offset_threshold;
 }
+
+void servo_set_num_offset_values(struct servo *servo, int num_offset_values)
+{
+	if (!servo || num_offset_values < 0)
+		return;
+
+	servo->num_offset_values = num_offset_values;
+	if (servo->curr_offset_values > servo->num_offset_values)
+		servo->curr_offset_values = servo->num_offset_values;
+}
+
+void servo_set_offset_threshold(struct servo *servo, int offset_threshold)
+{
+	if (!servo)
+		return;
+
+	servo->offset_threshold = offset_threshold;
+}

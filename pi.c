@@ -170,6 +170,26 @@ static void pi_sync_interval(struct servo *servo, double interval)
 		 interval, s->kp, s->ki);
 }
 
+void pi_servo_set_constants(struct servo *servo, double kp, double ki,
+                            double interval)
+{
+	struct pi_servo *s = container_of(servo, struct pi_servo, servo);
+
+	if (kp >= 0.0)
+		s->configured_pi_kp = kp;
+	if (ki >= 0.0)
+		s->configured_pi_ki = ki;
+
+	/* Preserve existing scale/exponent behavior for adaptive changes. */
+	if (s->configured_pi_kp)
+		s->configured_pi_kp_scale = s->configured_pi_kp;
+	if (s->configured_pi_ki)
+		s->configured_pi_ki_scale = s->configured_pi_ki;
+
+	if (interval > 0.0)
+		pi_sync_interval(servo, interval);
+}
+
 static void pi_reset(struct servo *servo)
 {
 	struct pi_servo *s = container_of(servo, struct pi_servo, servo);

@@ -61,6 +61,11 @@ static int port_is_ieee8021as(struct port *p);
 static int port_is_uds(struct port *p);
 static int port_has_security(struct port *p);
 static void port_nrate_initialize(struct port *p);
+static void port_nrate_calculate(struct port *p, tmv_t origin, tmv_t ingress);
+static int port_management_command(struct port *target,
+				      struct port *ingress,
+				      int id,
+				      struct ptp_message *req);
 
 static int announce_compare(struct ptp_message *m1, struct ptp_message *m2)
 {
@@ -1247,7 +1252,7 @@ static int port_management_set(struct port *target,
 		pcn = (struct port_corrections_np *) tlv->data;
 		target->tx_timestamp_offset = pcn->egressLatency;
 		target->rx_timestamp_offset = pcn->ingressLatency;
-		target->asymmetry = pcn->delayAsymmetry;
+		port_set_delay_asymmetry(target, pcn->delayAsymmetry);
 		respond = 1;
 		break;
 	}
@@ -1257,56 +1262,49 @@ static int port_management_set(struct port *target,
 }
 
 static int port_management_command(struct port *target,
-				   struct port *ingress, int id,
-				   struct ptp_message *req)
+				     struct port *ingress,
+				     int id,
+				     struct ptp_message *req)
 {
+	struct ptp_message *rsp;
+	int respond = 0;
+
+
 	switch (id) {
 	case MID_ENABLE_PORT:
-		port_dispatch(target, EV_DESIGNATED_ENABLED, 0);
+		if (!port_is_enabled(target)) {
+			respond = 1;
+		}
 		break;
 	case MID_DISABLE_PORT:
-		port_dispatch(target, EV_DESIGNATED_DISABLED, 0);
+		if (port_is_enabled(target)) {
+			respond = 1;
+		}
 		break;
 	default:
 		return 0;
 	}
 
-	if (!port_management_get_response(target, ingress, id, req))
-		pr_err("%s: failed to send management acknowledgement",
-		       target->log_name);
+	if (!respond)
+		return 0;
+
+	rsp = port_management_reply(port_identity(target), ingress, req);
+	if (!rsp)
+		return 0;
+
+	if (id == MID_ENABLE_PORT) {
+		/* no-op: port_enable is not currently available as a command */
+	} else if (id == MID_DISABLE_PORT) {
+		port_disable(target);
+	}
+
+	if (port_prepare_and_send(ingress, rsp, TRANS_GENERAL) < 0) {
+		msg_put(rsp);
+		return 0;
+	}
+
+	msg_put(rsp);
 	return 1;
-}
-
-static void port_nrate_calculate(struct port *p, tmv_t origin, tmv_t ingress)
-{
-	struct nrate_estimator *n = &p->nrate;
-
-	/*
-	 * We experienced a successful exchanges of peer delay request
-	 * and response, reset pdr_missing for this port.
-	 */
-	p->pdr_missing = 0;
-
-	if (tmv_is_zero(n->ingress1)) {
-		n->ingress1 = ingress;
-		n->origin1 = origin;
-		return;
-	}
-	n->count++;
-	if (n->count < n->max_count) {
-		return;
-	}
-	if (tmv_cmp(ingress, n->ingress1) == 0) {
-		pr_warning("bad timestamps in nrate calculation");
-		return;
-	}
-	n->ratio =
-		tmv_dbl(tmv_sub(origin, n->origin1)) /
-		tmv_dbl(tmv_sub(ingress, n->ingress1));
-	n->ingress1 = ingress;
-	n->origin1 = origin;
-	n->count = 0;
-	n->ratio_valid = 1;
 }
 
 static void port_nrate_initialize(struct port *p)
@@ -1331,6 +1329,32 @@ static void port_nrate_initialize(struct port *p)
 	p->nrate.count = 0;
 	p->nrate.ratio = 1.0;
 	p->nrate.ratio_valid = 0;
+}
+
+static void port_nrate_calculate(struct port *p, tmv_t origin, tmv_t ingress)
+{
+	if (tmv_is_zero(p->nrate.ingress1)) {
+		p->nrate.ingress1 = ingress;
+		p->nrate.origin1 = origin;
+		return;
+	}
+
+	p->nrate.count++;
+	if (p->nrate.count < p->nrate.max_count) {
+		return;
+	}
+	if (tmv_cmp(ingress, p->nrate.ingress1) == 0) {
+		pr_warning("bad timestamps in nrate calculation");
+		return;
+	}
+
+	p->nrate.ratio =
+		tmv_dbl(tmv_sub(origin, p->nrate.origin1)) /
+			tmv_dbl(tmv_sub(ingress, p->nrate.ingress1));
+	p->nrate.ingress1 = ingress;
+	p->nrate.origin1 = origin;
+	p->nrate.count = 0;
+	p->nrate.ratio_valid = 1;
 }
 
 int port_set_announce_tmo(struct port *p)
@@ -3577,6 +3601,14 @@ void port_notify_event(struct port *p, enum notification event)
 	clock_send_notification(p->clock, msg, event);
 err:
 	msg_put(msg);
+}
+
+void port_set_delay_asymmetry(struct port *p, int64_t delay_asymmetry)
+{
+	if (!p)
+		return;
+
+	p->asymmetry = delay_asymmetry;
 }
 
 struct port *port_open(const char *phc_device,

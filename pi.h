@@ -23,4 +23,7 @@
 
 struct servo *pi_servo_create(struct config *cfg, double fadj, int sw_ts);
 
+void pi_servo_set_constants(struct servo *servo, double kp, double ki,
+                            double interval);
+
 #endif

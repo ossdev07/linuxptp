@@ -137,4 +137,7 @@ void servo_leap(struct servo *servo, int leap);
  */
 int servo_offset_threshold(struct servo *servo);
 
+void servo_set_num_offset_values(struct servo *servo, int num_offset_values);
+void servo_set_offset_threshold(struct servo *servo, int offset_threshold);
+
 #endif

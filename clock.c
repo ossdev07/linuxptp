@@ -2205,6 +2205,19 @@ void clock_sync_interval(struct clock *c, int n)
 	servo_sync_interval(c->servo, n < 0 ? 1.0 / (1 << -n) : 1 << n);
 }
 
+void clock_set_freq_est_interval(struct clock *c, int freq_est_interval)
+{
+	if (!c)
+		return;
+
+	c->freq_est_interval = freq_est_interval;
+
+	/* The effective sync interval is port-specific and recomputed on the
+	 * next sync interval update. This setter updates the underlying window
+	 * size for future clock_sync_interval calls.
+	 */
+}
+
 void clock_update_leap_status(struct clock *c)
 {
 	struct timespec ts;
