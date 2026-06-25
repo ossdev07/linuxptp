@@ -44,6 +44,7 @@ struct pi_servo {
 	double ki;
 	double last_freq;
 	int count;
+	double runtime_interval;    /* NEW */
 	/* configuration: */
 	double configured_pi_kp;
 	double configured_pi_ki;
@@ -186,8 +187,10 @@ void pi_servo_set_constants(struct servo *servo, double kp, double ki,
 	if (s->configured_pi_ki)
 		s->configured_pi_ki_scale = s->configured_pi_ki;
 
-	if (interval > 0.0)
+	if (interval > 0.0) {
+		s->runtime_interval = interval;
 		pi_sync_interval(servo, interval);
+	}
 }
 
 static void pi_reset(struct servo *servo)
@@ -213,6 +216,7 @@ struct servo *pi_servo_create(struct config *cfg, double fadj, int sw_ts)
 	s->last_freq     = fadj;
 	s->kp            = 0.0;
 	s->ki            = 0.0;
+	s->runtime_interval = 1.0;
 	s->configured_pi_kp = config_get_double(cfg, NULL, "pi_proportional_const");
 	s->configured_pi_ki = config_get_double(cfg, NULL, "pi_integral_const");
 	s->configured_pi_kp_scale = config_get_double(cfg, NULL, "pi_proportional_scale");
@@ -249,4 +253,27 @@ struct servo *pi_servo_create(struct config *cfg, double fadj, int sw_ts)
 	}
 
 	return &s->servo;
+}
+
+double pi_servo_get_kp(struct servo *servo)
+{
+	struct pi_servo *s =
+			container_of(servo, struct pi_servo, servo);
+
+	return s->kp;
+}
+
+double pi_servo_get_ki(struct servo *servo)
+{
+		struct pi_servo *s =
+				container_of(servo, struct pi_servo, servo);
+
+		return s->ki;
+}
+double pi_servo_get_interval(struct servo *servo)
+{
+	struct pi_servo *s =
+			container_of(servo, struct pi_servo, servo);
+
+		return s->runtime_interval;
 }

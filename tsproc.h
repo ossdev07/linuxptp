@@ -108,5 +108,7 @@ int tsproc_update_offset(struct tsproc *tsp, tmv_t *offset, double *weight);
 void tsproc_reset(struct tsproc *tsp, int full);
 
 int tsproc_set_filter_length(struct tsproc *tsp, int filter_length);
+int tsproc_get_filter_length(struct tsproc *tsp);
+int tsproc_get_filter_type(struct tsproc *tsp);
 
 #endif

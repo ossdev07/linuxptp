@@ -591,6 +591,67 @@ static int clock_management_fill_response(struct clock *c, struct port *p,
 		egpn->stepsRemoved = c->ext_gm_steps_removed;
 		datalen = sizeof(*egpn);
 		break;
+	case MID_SERVO_SETTINGS_NP:
+	{
+		struct servo_settings_np *ss;
+		struct servo *sv = clock_servo(c);
+
+		if (!sv) {
+			tlv_extra_recycle(extra);
+			return 0;
+		}
+
+		ss = (struct servo_settings_np *) tlv->data;
+
+		ss->numOffsetValues =
+			servo_get_num_offset_values(sv);
+
+		ss->offsetThreshold =
+			servo_offset_threshold(sv);
+
+		datalen = sizeof(*ss);
+		break;
+	}
+	case MID_PI_CONSTANTS_NP:
+	{
+		struct pi_constants_np *pc;
+
+		pc = (struct pi_constants_np *) tlv->data;
+
+		pc->kp = pi_servo_get_kp(clock_servo(c));
+		pc->ki = pi_servo_get_ki(clock_servo(c));
+		pc->interval = pi_servo_get_interval(clock_servo(c));
+
+		datalen = sizeof(*pc);
+		break;
+	}
+	case MID_TSPROC_FILTER_NP:
+	{
+		struct tsproc_filter_np *tf;
+
+		tf = (struct tsproc_filter_np *) tlv->data;
+
+		tf->filter_type =
+				tsproc_get_filter_type(c->tsproc);
+
+		tf->filter_length =
+				tsproc_get_filter_length(c->tsproc);
+
+		datalen = sizeof(*tf);
+		break;
+	}
+	case MID_CLOCK_FREQ_EST_NP:
+	{
+		struct clock_freq_est_np *cf;
+
+		cf = (struct clock_freq_est_np *) tlv->data;
+
+		cf->freq_est_interval =
+				clock_get_freq_est_interval(c);
+
+		datalen = sizeof(*cf);
+		break;
+	}
 	default:
 		/* The caller should *not* respond to this message. */
 		tlv_extra_recycle(extra);
@@ -2248,6 +2309,13 @@ void clock_set_freq_est_interval(struct clock *c, int freq_est_interval)
 	 * next sync interval update. This setter updates the underlying window
 	 * size for future clock_sync_interval calls.
 	 */
+}
+int clock_get_freq_est_interval(struct clock *c)
+{
+	if (!c)
+		return 0;
+
+	return c->freq_est_interval;
 }
 
 void clock_update_leap_status(struct clock *c)

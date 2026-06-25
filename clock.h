@@ -396,4 +396,7 @@ void clock_check_ts(struct clock *c, uint64_t ts);
  */
 double clock_rate_ratio(struct clock *c);
 
+void clock_set_freq_est_interval(struct clock *c, int freq_est_interval);
+int clock_get_freq_est_interval(struct clock *c);
+
 #endif

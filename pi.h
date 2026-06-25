@@ -25,5 +25,8 @@ struct servo *pi_servo_create(struct config *cfg, double fadj, int sw_ts);
 
 void pi_servo_set_constants(struct servo *servo, double kp, double ki,
                             double interval);
+double pi_servo_get_kp(struct servo *servo);
+double pi_servo_get_ki(struct servo *servo);
+double pi_servo_get_interval(struct servo *servo);
 
 #endif

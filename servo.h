@@ -139,5 +139,6 @@ int servo_offset_threshold(struct servo *servo);
 
 void servo_set_num_offset_values(struct servo *servo, int num_offset_values);
 void servo_set_offset_threshold(struct servo *servo, int offset_threshold);
+int servo_get_num_offset_values(struct servo *servo);
 
 #endif
