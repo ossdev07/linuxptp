@@ -14,19 +14,22 @@ runtime: expose adaptive runtime tuning via PMC TLVs (servo/pi/tsproc/clock)
 
 FILES MODIFIED
 --------------
-1. tlv.h           - Added 4 new management TLV IDs and payload structs
+1. tlv.h           - Added new management TLV IDs and payload structs (SERVO_THRESHOLDS_NP, PORT_CORRECTIONS_NP)
 2. tlv.c           - Implemented network byte-order conversions for new TLVs
-3. clock.c         - Added management SET handlers for servo/PI/clock parameters
-4. port.c          - Added management SET handler for tsproc filter parameters
-5. pmc_common.c    - Added CLI parsing and TLV datalen support for new parameters
-6. pmc.c           - Added display formatting for new TLV GET/SET responses
+3. servo.h         - Added setter/getter APIs for step_threshold, first_step_threshold, max_frequency
+4. servo.c         - Implemented servo threshold setter/getter functions
+5. clock.c         - Added management GET/SET handlers for servo threshold TLV
+6. port.c          - Added management SET handler for tsproc filter and port corrections (delayAsymmetry, egressLatency, ingressLatency)
+7. pmc_common.c    - Added CLI parsing and TLV datalen support for all new parameters
+8. pmc.c           - Added display formatting for new TLV GET/SET responses
 
 NEW MANAGEMENT TLV IDs
-----------------------
+-----------------------
 MID_SERVO_SETTINGS_NP      0xC00E   - Servo: numOffsetValues, offsetThreshold
 MID_PI_CONSTANTS_NP        0xC00F   - PI Servo: kp, ki, interval
 MID_TSPROC_FILTER_NP       0xC010   - Tsproc: filter_type, filter_length
 MID_CLOCK_FREQ_EST_NP      0xC011   - Clock: freq_est_interval
+MID_SERVO_THRESHOLDS_NP    0xC012   - Servo: step_threshold, first_step_threshold, max_frequency
 
 RUNTIME TUNING CAPABILITIES
 -----------------------------
@@ -72,8 +75,36 @@ RUNTIME TUNING CAPABILITIES
      Default: 256
      Allows: Setting frequency estimation window for long-term stability
 
-   PMC Usage:
-   $ pmc -d 0 set CLOCK_FREQ_EST_NP freq_est_interval 512
+    PMC Usage:
+    $ pmc -d 0 set CLOCK_FREQ_EST_NP freq_est_interval 512
+
+5. SERVO STEP THRESHOLDS
+   Parameter: step_threshold (double, seconds)
+     Default: 0.0001 (100 microseconds)
+     Allows: Setting servo frequency step threshold for offset correction
+   Parameter: first_step_threshold (double, seconds)
+     Default: 0.0 (disabled, uses step_threshold)
+     Allows: Initial step threshold for first lock
+   Parameter: max_frequency (int32, ppb)
+     Default: 900000000
+     Allows: Maximum frequency adjustment allowed by servo
+
+    PMC Usage:
+    $ pmc -d 0 set SERVO_THRESHOLDS_NP 0.0001 0.00002 900000000
+
+6. PORT CORRECTIONS (delayAsymmetry, egressLatency, ingressLatency)
+    Parameter: egressLatency (int64, nanoseconds << 16)
+      Default: 0
+      Allows: Setting egress latency correction
+    Parameter: ingressLatency (int64, nanoseconds << 16)
+      Default: 0
+      Allows: Setting ingress latency correction
+    Parameter: delayAsymmetry (int64, nanoseconds << 16)
+      Default: 0
+      Allows: Setting delay asymmetry correction
+
+    PMC Usage:
+    $ pmc -d 0 set PORT_CORRECTIONS_NP egressLatency 125 ingressLatency 125 delayAsymmetry 1500
 
 TECHNICAL DETAILS
 -----------------

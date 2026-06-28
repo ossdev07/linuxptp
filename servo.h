@@ -139,6 +139,12 @@ int servo_offset_threshold(struct servo *servo);
 
 void servo_set_num_offset_values(struct servo *servo, int num_offset_values);
 void servo_set_offset_threshold(struct servo *servo, int offset_threshold);
+void servo_set_step_threshold(struct servo *servo, double step_threshold_ns);
+void servo_set_first_step_threshold(struct servo *servo, double threshold_ns);
+void servo_set_max_frequency(struct servo *servo, int max_freq_ppb);
 int servo_get_num_offset_values(struct servo *servo);
+double servo_get_step_threshold(struct servo *servo);
+double servo_get_first_step_threshold(struct servo *servo);
+int servo_get_max_frequency(struct servo *servo);
 
 #endif

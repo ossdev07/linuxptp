@@ -166,6 +166,7 @@ struct management_id idtab[] = {
 	{ "PI_CONSTANTS_NP", MID_PI_CONSTANTS_NP, do_set_action },
 	{ "TSPROC_FILTER_NP", MID_TSPROC_FILTER_NP, do_set_action },
 	{ "CLOCK_FREQ_EST_NP", MID_CLOCK_FREQ_EST_NP, do_set_action },
+	{ "SERVO_THRESHOLDS_NP", MID_SERVO_THRESHOLDS_NP, do_set_action },
 };
 
 static void do_get_action(struct pmc *pmc, int action, int index, char *str)
@@ -491,6 +492,23 @@ static void do_set_action(struct pmc *pmc, int action, int index, char *str)
 				break;
 			}
 			pmc_send_set_action(pmc, code, &cf, sizeof(cf));
+		}
+		break;
+	case MID_SERVO_THRESHOLDS_NP:
+		{
+			struct servo_thresholds_np st;
+			int cnt = sscanf(str, " %*s %*s %lf %lf %d",
+				&st.step_threshold,
+				&st.first_step_threshold,
+				&st.max_frequency);
+			if (cnt != 3) {
+				fprintf(stderr, "%s SET needs 3 values "
+					"(step_threshold first_step_threshold "
+					"max_frequency)\n",
+					idtab[index].name);
+				break;
+			}
+			pmc_send_set_action(pmc, code, &st, sizeof(st));
 		}
 		break;
 	}
@@ -872,6 +890,9 @@ static int pmc_tlv_datalen(struct pmc *pmc, int id)
 		break;
 	case MID_CLOCK_FREQ_EST_NP:
 		len += sizeof(struct clock_freq_est_np);
+		break;
+	case MID_SERVO_THRESHOLDS_NP:
+		len += sizeof(struct servo_thresholds_np);
 		break;
 		break;
 	case MID_LOG_ANNOUNCE_INTERVAL:

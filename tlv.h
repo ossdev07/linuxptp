@@ -138,6 +138,7 @@ enum management_action {
 #define MID_PI_CONSTANTS_NP				0xC00F
 #define MID_TSPROC_FILTER_NP				0xC010
 #define MID_CLOCK_FREQ_EST_NP				0xC011
+#define MID_SERVO_THRESHOLDS_NP				0xC012
 
 /* Management error ID values */
 #define MID_RESPONSE_TOO_BIG				0x0001
@@ -526,6 +527,12 @@ struct tsproc_filter_np {
 
 struct clock_freq_est_np {
 	Integer32 freq_est_interval;
+} PACKED;
+
+struct servo_thresholds_np {
+	double step_threshold;
+	double first_step_threshold;
+	Integer32 max_frequency;
 } PACKED;
 
 /**

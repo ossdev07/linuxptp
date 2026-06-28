@@ -542,6 +542,17 @@ static int mgt_post_recv(struct management_tlv *m, uint16_t data_len,
 			NTOHL(cf->freq_est_interval);
 		}
 		break;
+	case MID_SERVO_THRESHOLDS_NP:
+		if (data_len != sizeof(struct servo_thresholds_np))
+			goto bad_length;
+		{
+			struct servo_thresholds_np *st =
+				(struct servo_thresholds_np *) m->data;
+			net2host64_unaligned(&st->step_threshold);
+			net2host64_unaligned(&st->first_step_threshold);
+			NTOHL(st->max_frequency);
+		}
+		break;
 	case MID_SAVE_IN_NON_VOLATILE_STORAGE:
 	case MID_RESET_NON_VOLATILE_STORAGE:
 	case MID_INITIALIZE:
@@ -778,6 +789,15 @@ static void mgt_pre_send(struct management_tlv *m, struct tlv_extra *extra)
 		{
 			struct clock_freq_est_np *cf = (struct clock_freq_est_np *) m->data;
 			HTONL(cf->freq_est_interval);
+		}
+		break;
+	case MID_SERVO_THRESHOLDS_NP:
+		{
+			struct servo_thresholds_np *st =
+				(struct servo_thresholds_np *) m->data;
+			host2net64_unaligned(&st->step_threshold);
+			host2net64_unaligned(&st->first_step_threshold);
+			HTONL(st->max_frequency);
 		}
 		break;
 	}

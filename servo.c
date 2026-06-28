@@ -203,3 +203,51 @@ int servo_get_num_offset_values(struct servo *servo)
 
         return servo->num_offset_values;
 }
+
+void servo_set_step_threshold(struct servo *servo, double step_threshold_ns)
+{
+	if (!servo)
+		return;
+
+	servo->step_threshold = step_threshold_ns;
+}
+
+void servo_set_first_step_threshold(struct servo *servo, double threshold_ns)
+{
+	if (!servo)
+		return;
+
+	servo->first_step_threshold = threshold_ns;
+}
+
+void servo_set_max_frequency(struct servo *servo, int max_freq_ppb)
+{
+	if (!servo)
+		return;
+
+	servo->max_frequency = max_freq_ppb;
+}
+
+double servo_get_step_threshold(struct servo *servo)
+{
+	if (!servo)
+		return 0.0;
+
+	return servo->step_threshold;
+}
+
+double servo_get_first_step_threshold(struct servo *servo)
+{
+	if (!servo)
+		return 0.0;
+
+	return servo->first_step_threshold;
+}
+
+int servo_get_max_frequency(struct servo *servo)
+{
+	if (!servo)
+		return 0;
+
+	return (int)servo->max_frequency;
+}

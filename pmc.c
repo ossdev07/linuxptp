@@ -693,6 +693,18 @@ static void pmc_show(struct ptp_message *msg, FILE *fp)
 				cf->freq_est_interval);
 		}
 		break;
+	case MID_SERVO_THRESHOLDS_NP:
+		{
+			struct servo_thresholds_np *st = (struct servo_thresholds_np *) mgt->data;
+			fprintf(fp, "SERVO_THRESHOLDS_NP "
+				IFMT "step_threshold %.6f "
+				IFMT "first_step_threshold %.6f "
+				IFMT "max_frequency %d",
+				st->step_threshold,
+				st->first_step_threshold,
+				st->max_frequency);
+		}
+		break;
 	case MID_LOG_ANNOUNCE_INTERVAL:
 		mtd = (struct management_tlv_datum *) mgt->data;
 		fprintf(fp, "LOG_ANNOUNCE_INTERVAL "

@@ -652,6 +652,28 @@ static int clock_management_fill_response(struct clock *c, struct port *p,
 		datalen = sizeof(*cf);
 		break;
 	}
+	case MID_SERVO_THRESHOLDS_NP:
+	{
+		struct servo_thresholds_np *st;
+		struct servo *sv = clock_servo(c);
+
+		if (!sv) {
+			tlv_extra_recycle(extra);
+			return 0;
+		}
+
+		st = (struct servo_thresholds_np *) tlv->data;
+
+		st->step_threshold =
+				servo_get_step_threshold(sv);
+		st->first_step_threshold =
+				servo_get_first_step_threshold(sv);
+		st->max_frequency =
+				servo_get_max_frequency(sv);
+
+		datalen = sizeof(*st);
+		break;
+	}
 	default:
 		/* The caller should *not* respond to this message. */
 		tlv_extra_recycle(extra);
@@ -817,6 +839,21 @@ static int clock_management_set(struct clock *c, struct port *p,
 			clock_set_freq_est_interval(c, cf->freq_est_interval);
 			respond = 1;
 			*changed = 1;
+		}
+		break;
+	case MID_SERVO_THRESHOLDS_NP:
+		{
+			struct servo_thresholds_np *st =
+				(struct servo_thresholds_np *) tlv->data;
+			struct servo *sv = clock_servo(c);
+			if (sv) {
+				servo_set_step_threshold(sv, st->step_threshold);
+				servo_set_first_step_threshold(sv,
+							       st->first_step_threshold);
+				servo_set_max_frequency(sv, st->max_frequency);
+				respond = 1;
+				*changed = 1;
+			}
 		}
 		break;
 	}
