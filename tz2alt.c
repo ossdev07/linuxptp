@@ -18,6 +18,7 @@
 #include "sad.h"
 #include "version.h"
 #include "tz.h"
+#include "util.h"
 
 #define DEFAULT_TZ	"PST8PDT"
 #define DEFAULT_PERIOD	3600

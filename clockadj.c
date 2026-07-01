@@ -26,6 +26,7 @@
 #include "clockadj.h"
 #include "missing.h"
 #include "print.h"
+#include "util.h"
 
 #define NS_PER_SEC 1000000000LL
 

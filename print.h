@@ -20,23 +20,31 @@
 #ifndef HAVE_PRINT_H
 #define HAVE_PRINT_H
 
-#include <syslog.h>
-
-#include "util.h"
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+/**
+ * Logging levels.
+ */
+#define LOG_EMERG  (-1)
+#define LOG_ERR     0
+#define LOG_WARNING 1
+#define LOG_NOTICE  2
+#define LOG_INFO    3
+#define LOG_DEBUG   4
+#define LOG_DEBUG1  5
+#define LOG_DEBUG2  6
 
 #define PRINT_LEVEL_MIN LOG_EMERG
-#define PRINT_LEVEL_MAX LOG_DEBUG
-
-#ifdef __GNUC__
-__attribute__ ((format (printf, 2, 3)))
-#endif
-void print(int level, char const *format, ...);
+#define PRINT_LEVEL_MAX LOG_DEBUG2
 
 void print_set_progname(const char *name);
 void print_set_tag(const char *tag);
 void print_set_syslog(int value);
 void print_set_level(int level);
 void print_set_verbose(int value);
+extern void print(int level, const char *format, ...)
+	__attribute__ ((__format__ (__printf__, 2, 3)));
 
 /*
  * Better check print log level before execution of print itself.
@@ -69,21 +77,49 @@ do {							\
 #define pr_info(x...)    PRINT_CL(LOG_INFO, x)
 #define pr_debug(x...)   PRINT_CL(LOG_DEBUG, x)
 
-#define PRINT_RL(l, i, x...) \
+#define pl_info(lvl, x...) \
 	do { \
-		static time_t last = -i; \
-		if (!rate_limited(i, &last)) \
-			print(l, x); \
-	} while (0);
+		if (lvl >= print_level) \
+			print(LOG_INFO, "ptp4l " x); \
+	} while (0)
 
-/* Rate limited versions */
-#define pl_emerg(i, x...)   PRINT_RL(LOG_EMERG, i, x)
-#define pl_alert(i, x...)   PRINT_RL(LOG_ALERT, i, x)
-#define pl_crit(i, x...)    PRINT_RL(LOG_CRIT, i, x)
-#define pl_err(i, x...)     PRINT_RL(LOG_ERR, i, x)
-#define pl_warning(i, x...) PRINT_RL(LOG_WARNING, i, x)
-#define pl_notice(i, x...)  PRINT_RL(LOG_NOTICE, i, x)
-#define pl_info(i, x...)    PRINT_RL(LOG_INFO, i, x)
-#define pl_debug(i, x...)   PRINT_RL(LOG_DEBUG, i, x)
+#define pl_warning(lvl, x...) \
+	do { \
+		if (lvl >= print_level) \
+			print(LOG_WARNING, "ptp4l " x); \
+	} while (0)
+
+#define pl_err(lvl, x...) \
+	do { \
+		if (lvl >= print_level) \
+			print(LOG_ERR, "ptp4l " x); \
+	} while (0)
+
+/**
+ * Tuning audit log - dedicated channel for recording tuning parameter changes.
+ * These are logged at LOG_NOTICE level with a consistent format for
+ * parsing by monitoring tools.
+ *
+ * Format: TUNE: <parameter_name> <old_value> -> <new_value>
+ *
+ * Examples:
+ *   TUNE: numOffsetValues 10 -> 5
+ *   TUNE: kp 0.700000 -> 0.500000
+ *   TUNE: port[eth0] filter_length 8 -> 12
+ */
+#define pr_tune(param, old_val, new_val, fmt_spec) \
+	do { \
+		print(LOG_NOTICE, "ptp4l", \
+		      "TUNE: " param " " fmt_spec " -> " fmt_spec, \
+		      (old_val), (new_val)); \
+	} while (0)
+
+/* For string-based parameters */
+#define pr_tune_str(param, old_val, new_val) \
+	do { \
+		print(LOG_NOTICE, "ptp4l", \
+		      "TUNE: " param " %s -> %s", \
+		      (old_val), (new_val)); \
+	} while (0)
 
 #endif

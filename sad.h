@@ -9,6 +9,7 @@
 
 #include <sys/queue.h>
 
+#include "config.h"
 #include "pdt.h"
 
 struct security_association {

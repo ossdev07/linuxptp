@@ -31,6 +31,7 @@
 #include "transport.h"
 #include "pmc_common.h"
 #include "power_profile.h"
+#include "util.h"
 
 #define BAD_ACTION   -1
 #define BAD_ID       -1

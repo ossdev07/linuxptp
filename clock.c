@@ -18,6 +18,7 @@
  */
 #include <errno.h>
 #include <time.h>
+#include <math.h>
 #include <linux/net_tstamp.h>
 #include <poll.h>
 #include <stdlib.h>
@@ -815,8 +816,12 @@ static int clock_management_set(struct clock *c, struct port *p,
 			struct servo_settings_np *ss = (struct servo_settings_np *) tlv->data;
 			struct servo *sv = clock_servo(c);
 			if (sv) {
+				int old_num = servo_get_num_offset_values(sv);
+				int old_thres = servo_offset_threshold(sv);
 				servo_set_num_offset_values(sv, ss->numOffsetValues);
 				servo_set_offset_threshold(sv, ss->offsetThreshold);
+				pr_tune("numOffsetValues", old_num, ss->numOffsetValues, "%d");
+				pr_tune("offsetThreshold", old_thres, ss->offsetThreshold, "%d");
 				respond = 1;
 				*changed = 1;
 			}
@@ -827,7 +832,24 @@ static int clock_management_set(struct clock *c, struct port *p,
 			struct pi_constants_np *pc = (struct pi_constants_np *) tlv->data;
 			struct servo *sv = clock_servo(c);
 			if (sv) {
+				double old_kp = pi_servo_get_kp(sv);
+				double old_ki = pi_servo_get_ki(sv);
+				double old_interval = pi_servo_get_interval(sv);
+				/* Apply gradual ramp if kp or ki change is > 0.2 */
+				if (fabs(pc->kp - old_kp) > 0.2 ||
+				    fabs(pc->ki - old_ki) > 0.2) {
+					double ramp_kp = old_kp + (pc->kp - old_kp) * 0.5;
+					double ramp_ki = old_ki + (pc->ki - old_ki) * 0.5;
+					pr_notice("PI ramp: applying intermediate kp=%.3f ki=%.3f "
+						  "(target kp=%.3f ki=%.3f)",
+						  ramp_kp, ramp_ki, pc->kp, pc->ki);
+					pi_servo_set_constants(sv, ramp_kp, ramp_ki,
+							       pc->interval);
+				}
 				pi_servo_set_constants(sv, pc->kp, pc->ki, pc->interval);
+				pr_tune("kp", old_kp, pc->kp, "%.6f");
+				pr_tune("ki", old_ki, pc->ki, "%.6f");
+				pr_tune("interval", old_interval, pc->interval, "%.6f");
 				respond = 1;
 				*changed = 1;
 			}
@@ -1869,6 +1891,113 @@ int clock_manage(struct clock *c, struct port *p, struct ptp_message *msg)
 			return changed;
 		break;
 	case SET:
+	{
+		struct management_tlv *mgt_set =
+			(struct management_tlv *) msg->management.suffix;
+		switch (mgt_set->id) {
+		case MID_SERVO_SETTINGS_NP:
+		{
+			if (mgt_set->length >= 2 + (int)sizeof(struct servo_settings_np)) {
+				struct servo_settings_np *ss =
+					(struct servo_settings_np *) mgt_set->data;
+				if (ss->numOffsetValues < 1 || ss->numOffsetValues > 100) {
+					pr_err("REJECTED: numOffsetValues %d out of range [1, 100]",
+					       ss->numOffsetValues);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+				if (ss->offsetThreshold < 0) {
+					pr_err("REJECTED: offsetThreshold %d cannot be negative",
+					       ss->offsetThreshold);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+			}
+			break;
+		}
+		case MID_PI_CONSTANTS_NP:
+		{
+			if (mgt_set->length >= 2 + (int)sizeof(struct pi_constants_np)) {
+				struct pi_constants_np *pc =
+					(struct pi_constants_np *) mgt_set->data;
+				if (pc->kp < 0.0 || pc->kp > 10.0) {
+					pr_err("REJECTED: kp %f out of range [0.0, 10.0]",
+					       pc->kp);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+				if (pc->ki < 0.0 || pc->ki > 10.0) {
+					pr_err("REJECTED: ki %f out of range [0.0, 10.0]",
+					       pc->ki);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+				if (pc->interval <= 0.0 || pc->interval > 100.0) {
+					pr_err("REJECTED: interval %f out of range (0.0, 100.0]",
+					       pc->interval);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+			}
+			break;
+		}
+		case MID_CLOCK_FREQ_EST_NP:
+		{
+			if (mgt_set->length >= 2 + (int)sizeof(struct clock_freq_est_np)) {
+				struct clock_freq_est_np *cf =
+					(struct clock_freq_est_np *) mgt_set->data;
+				if (cf->freq_est_interval < 1 || cf->freq_est_interval > 4096) {
+					pr_err("REJECTED: freq_est_interval %d out of range [1, 4096]",
+					       cf->freq_est_interval);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+			}
+			break;
+		}
+		case MID_SERVO_THRESHOLDS_NP:
+		{
+			if (mgt_set->length >= 2 + (int)sizeof(struct servo_thresholds_np)) {
+				struct servo_thresholds_np *st =
+					(struct servo_thresholds_np *) mgt_set->data;
+				if (st->step_threshold < 0.0 || st->step_threshold > 1.0) {
+					pr_err("REJECTED: step_threshold %f out of range [0.0, 1.0]",
+					       st->step_threshold);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+				if (st->first_step_threshold < 0.0 || st->first_step_threshold > 1.0) {
+					pr_err("REJECTED: first_step_threshold %f out of range [0.0, 1.0]",
+					       st->first_step_threshold);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+				if (st->max_frequency < 0 || st->max_frequency > 1000000000) {
+					pr_err("REJECTED: max_frequency %d out of range [0, 1000000000]",
+					       st->max_frequency);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+			}
+			break;
+		}
+		case MID_TSPROC_FILTER_NP:
+		{
+			if (mgt_set->length >= 2 + (int)sizeof(struct tsproc_filter_np)) {
+				struct tsproc_filter_np *tf =
+					(struct tsproc_filter_np *) mgt_set->data;
+				if (tf->filter_length < 1 || tf->filter_length > 256) {
+					pr_err("REJECTED: filter_length %d out of range [1, 256]",
+					       tf->filter_length);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
+			}
+			break;
+		}
+		default:
+			break;
+		}
 		if (mgt->length == 2 && mgt->id != MID_NULL_MANAGEMENT) {
 			clock_management_send_error(p, msg, MID_WRONG_LENGTH);
 			return changed;
@@ -1881,6 +2010,7 @@ int clock_manage(struct clock *c, struct port *p, struct ptp_message *msg)
 		if (clock_management_set(c, p, mgt->id, msg, &changed))
 			return changed;
 		break;
+	}
 	case COMMAND:
 		if (p != c->uds_rw_port) {
 			/* Sorry, only allowed on the UDS-RW port. */

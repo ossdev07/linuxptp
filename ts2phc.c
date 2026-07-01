@@ -21,6 +21,7 @@
 #include "sad.h"
 #include "ts2phc.h"
 #include "version.h"
+#include "util.h"
 
 #define NS_PER_SEC		1000000000LL
 #define SAMPLE_WEIGHT		1.0

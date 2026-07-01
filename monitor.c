@@ -9,6 +9,7 @@
 #include "address.h"
 #include "monitor.h"
 #include "print.h"
+#include "util.h"
 
 #define RECORDS_PER_MESSAGE 1
 

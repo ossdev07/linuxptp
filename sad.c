@@ -14,6 +14,7 @@
 #include "sad.h"
 #include "sad_private.h"
 #include "tlv.h"
+#include "util.h"
 
 static struct security_association *current_sa;
 static struct integrity_alg_info supported_algorithms [] = {
