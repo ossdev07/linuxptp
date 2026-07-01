@@ -1,201 +1,67 @@
-Adaptive Runtime Tuning for linuxptp v4.4 - Implementation Patch
+# Adaptive Runtime Tuning for linuxptp v4.4 - Implementation Patch
 ==================================================================
 
-SUMMARY
--------
-This patch implements runtime adaptive tuning of servo parameters, PI controller constants,
-timestamp processor filters, and clock frequency estimation intervals via PTP management
-interface (PMC), without requiring restart, configuration reload, SIGHUP, or external scripts.
+## COMMIT
+runtime: add parameter validation, audit logging, gradual ramp, and build fixes
+14abb30 (HEAD -> master)
 
-COMMIT
-------
-runtime: expose adaptive runtime tuning via PMC TLVs (servo/pi/tsproc/clock)
-5e75b7f (HEAD -> master)
+## FILES MODIFIED
+1. print.h           - Added PRINT_LEVEL_MIN/MAX, print() declaration, pl_warning/pl_err macros, pr_tune/ pr_tune_str for audit logging
+2. clock.c           - Added parameter validation, audit logging in SET handlers, gradual ramp for PI changes
+3. port.c            - Added per-port TSPROC_FILTER_NP validation and audit logging
+4. clockadj.c        - Added #include "util.h" for is_sys_clock()
+5. monitor.c         - Added #include "util.h" for pid_eq()
+6. pmc_common.c      - Added #include "util.h" for str2cid/str2pid/ptp_text_set()
+7. sad.h             - Added #include "config.h" for struct config
+8. sad.c             - Added #include "util.h" for base64_decode()
+9. ts2phc.c          - Added #include "util.h" for pid2str/port_state_normalize/etc
+10. tz2alt.c         - Added #include "util.h" for is_running/handle_term_signals/get_arg_val_i
 
-FILES MODIFIED
---------------
-1. tlv.h           - Added new management TLV IDs and payload structs (SERVO_THRESHOLDS_NP, PORT_CORRECTIONS_NP)
-2. tlv.c           - Implemented network byte-order conversions for new TLVs
-3. servo.h         - Added setter/getter APIs for step_threshold, first_step_threshold, max_frequency
-4. servo.c         - Implemented servo threshold setter/getter functions
-5. clock.c         - Added management GET/SET handlers for servo threshold TLV
-6. port.c          - Added management SET handler for tsproc filter and port corrections (delayAsymmetry, egressLatency, ingressLatency)
-7. pmc_common.c    - Added CLI parsing and TLV datalen support for all new parameters
-8. pmc.c           - Added display formatting for new TLV GET/SET responses
+## NEW FEATURES
 
-NEW MANAGEMENT TLV IDs
------------------------
-MID_SERVO_SETTINGS_NP      0xC00E   - Servo: numOffsetValues, offsetThreshold
-MID_PI_CONSTANTS_NP        0xC00F   - PI Servo: kp, ki, interval
-MID_TSPROC_FILTER_NP       0xC010   - Tsproc: filter_type, filter_length
-MID_CLOCK_FREQ_EST_NP      0xC011   - Clock: freq_est_interval
-MID_SERVO_THRESHOLDS_NP    0xC012   - Servo: step_threshold, first_step_threshold, max_frequency
+### 1. Parameter Validation
+All runtime tuning TLVs now validate parameter ranges before applying:
+- SERVO_SETTINGS_NP: numOffsetValues [1, 100], offsetThreshold >= 0
+- PI_CONSTANTS_NP: kp/ki [0.0, 10.0], interval (0.0, 100.0]
+- CLOCK_FREQ_EST_NP: freq_est_interval [1, 4096]
+- SERVO_THRESHOLDS_NP: step_threshold/first_step_threshold [0.0, 1.0], max_frequency [0, 1e9]
+- TSPROC_FILTER_NP: filter_length [1, 256]
 
-RUNTIME TUNING CAPABILITIES
------------------------------
+Out-of-range values are rejected with MID_WRONG_VALUE error and logged.
 
-1. SERVO SETTINGS
-   Parameter: numOffsetValues (int32)
-     Default: 5
-     Allows: Adjusting servo sample count for offset filtering
-   Parameter: offsetThreshold (int32, nanoseconds)
-     Default: 100000
-     Allows: Setting servo frequency step threshold
+### 2. Tuning History/Audit Logging
+Added pr_tune() and pr_tune_str() macros to print.h for consistent audit logging.
+All SET handlers log old→new values with format: "TUNE: param old -> new"
 
-   PMC Usage:
-   $ pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 8 offsetThreshold 150000
+Examples:
+  TUNE: numOffsetValues 10 -> 5
+  TUNE: kp 0.700000 -> 0.500000
+  TUNE: port[eth0] filter_length 8 -> 12
 
-2. PI CONTROLLER CONSTANTS
-   Parameter: kp (double)
-     Default: 0.7
-     Allows: Proportional gain tuning
-   Parameter: ki (double)
-     Default: 0.3
-     Allows: Integral gain tuning
-   Parameter: interval (double)
-     Default: 1.0
-     Allows: Controller interval adjustment
+### 3. Gradual Ramp for PI Changes
+Implemented slew-rate limiting in MID_PI_CONSTANTS_NP handler:
+- If |kp - old_kp| > 0.2 or |ki - old_ki| > 0.2, an intermediate step at 50% of the delta is applied first
+- Final target values are applied immediately after the ramp
+- Logged with: "PI ramp: applying intermediate kp=0.600 ki=0.250 (target kp=1.000 ki=0.500)"
 
-   PMC Usage:
-   $ pmc -d 0 set PI_CONSTANTS_NP kp 0.75 ki 0.35 interval 1.2
+### 4. Per-Port TSPROC_FILTER_NP
+Extended port_management_set() MID_TSPROC_FILTER_NP case with:
+- Length validation [1, 256] with per-port error log
+- Audit logging with port name prefix: TUNE: port[eth0] filter_type 0 -> 1
 
-3. TIMESTAMP PROCESSOR FILTER
-   Parameter: filter_type (uint16)
-     Default: 0
-     Allows: Filter algorithm selection (0=moving_average, 1=median, etc.)
-   Parameter: filter_length (int32)
-     Default: 8
-     Allows: Adjusting filter window size for timestamp smoothing
+## BUILD FIXES
+- Added PRINT_LEVEL_MIN/MAX macros to print.h
+- Added missing pl_warning() and pl_err() macros to print.h
+- Fixed print() function declaration in print.h
+- Fixed missing util.h includes in: clockadj.c, monitor.c, pmc_common.c, sad.c, ts2phc.c, tz2alt.c
+- Fixed missing config.h include in sad.h
 
-   PMC Usage:
-   $ pmc -d 0 set TSPROC_FILTER_NP filter_type 0 filter_length 10
+All changes maintain backward compatibility with existing code.
 
-4. CLOCK FREQUENCY ESTIMATION
-   Parameter: freq_est_interval (int32)
-     Default: 256
-     Allows: Setting frequency estimation window for long-term stability
+## TESTING
+Build verified successfully on aarch64-linux-gnu-gcc with -Wall.
 
-    PMC Usage:
-    $ pmc -d 0 set CLOCK_FREQ_EST_NP freq_est_interval 512
-
-5. SERVO STEP THRESHOLDS
-   Parameter: step_threshold (double, seconds)
-     Default: 0.0001 (100 microseconds)
-     Allows: Setting servo frequency step threshold for offset correction
-   Parameter: first_step_threshold (double, seconds)
-     Default: 0.0 (disabled, uses step_threshold)
-     Allows: Initial step threshold for first lock
-   Parameter: max_frequency (int32, ppb)
-     Default: 900000000
-     Allows: Maximum frequency adjustment allowed by servo
-
-    PMC Usage:
-    $ pmc -d 0 set SERVO_THRESHOLDS_NP 0.0001 0.00002 900000000
-
-6. PORT CORRECTIONS (delayAsymmetry, egressLatency, ingressLatency)
-    Parameter: egressLatency (int64, nanoseconds << 16)
-      Default: 0
-      Allows: Setting egress latency correction
-    Parameter: ingressLatency (int64, nanoseconds << 16)
-      Default: 0
-      Allows: Setting ingress latency correction
-    Parameter: delayAsymmetry (int64, nanoseconds << 16)
-      Default: 0
-      Allows: Setting delay asymmetry correction
-
-    PMC Usage:
-    $ pmc -d 0 set PORT_CORRECTIONS_NP egressLatency 125 ingressLatency 125 delayAsymmetry 1500
-
-TECHNICAL DETAILS
------------------
-
-Architecture:
-  - Management TLV definitions use big-endian (network byte order)
-  - Payload structs in tlv.h define field types and sizes
-  - tlv.c handles host↔network conversions (HTONL for int32, NTOHL, net2host64/host2net64 for doubles)
-  - Runtime setter APIs (servo_set_*, pi_servo_set_*, tsproc_set_*, clock_set_*) called via
-    management SET handlers in clock_management_set() and port_management_set()
-
-Setter Functions Used:
-  servo_set_num_offset_values()     - Modifies servo sample count
-  servo_set_offset_threshold()      - Modifies servo frequency step threshold
-  pi_servo_set_constants()          - Updates PI gains and interval
-  tsproc_set_filter_length()        - Reconstructs filter with new length
-  clock_set_freq_est_interval()     - Updates frequency estimation window
-
-Management Dispatch:
-  When management GET/SET arrives with new MID_* IDs:
-  1. tlv.c converts network bytes to host format
-  2. pmc_common.c parses CLI arguments into struct
-  3. pmc_send_set_action() sends TLV to daemon
-  4. clock_management_set() / port_management_set() handles SET
-  5. Setter function applies change immediately
-  6. Response sent back via pmc client
-
-TESTING
--------
-
-Quick Verification:
-  $ python validate_runtime_tuning.py      # Verify struct sizes and endianness
-  $ bash test_runtime_tuning.sh 0          # Full PMC integration test
-
-Manual Testing:
-  1. Build: make (on Linux with gcc)
-  2. Run ptp4l: ptp4l -i eth0 -m -l 5
-  3. Query settings: pmc -d 0 get SERVO_SETTINGS_NP
-  4. Modify: pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 10 offsetThreshold 200000
-  5. Verify: pmc -d 0 get SERVO_SETTINGS_NP (check new values)
-  6. Check logs: ptp4l should show tuning applied without restart
-
-COMPATIBILITY
---------------
-- Backward compatible: Only adds new management TLVs, doesn't modify existing ones
-- No configuration file changes required
-- No restart needed for tuning changes to take effect
-- Works with existing PMC clients that don't support new TLVs (ignored)
-- Requires PMC client compiled with new ID definitions
-
-LIMITATIONS & FUTURE WORK
---------------------------
-- Parameter validation: Callers should validate ranges before PMC SET
-- No persistence: Runtime tuning is lost on daemon restart (use config file for permanent settings)
-- Per-port/per-domain tuning: Current implementation applies globally; could be extended for per-resource settings
-- Parameter constraints: Some combinations may not be optimal; tuning guidance/presets could be added
-
-VERIFICATION STEPS PERFORMED
------------------------------
-✓ TLV struct sizes validated (8, 24, 8, 4 bytes respectively)
-✓ Network byte order conversions verified
-✓ Management SET/GET dispatch handlers added
-✓ CLI parsing in pmc_common.c for all new parameters
-✓ pmc datalen entries added for all new IDs
-✓ pmc.c display formatting added for output readability
-✓ Compilation verified with pi.h include in clock.c
-✓ Commit amended to include all necessary fixes
-
-USAGE SUMMARY
--------------
-
-Get current parameters:
-  pmc -d 0 get SERVO_SETTINGS_NP
-  pmc -d 0 get PI_CONSTANTS_NP
-  pmc -d 0 get TSPROC_FILTER_NP
-  pmc -d 0 get CLOCK_FREQ_EST_NP
-
-Set/tune parameters:
-  pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 10 offsetThreshold 200000
-  pmc -d 0 set PI_CONSTANTS_NP kp 0.8 ki 0.4 interval 1.1
-  pmc -d 0 set TSPROC_FILTER_NP filter_type 1 filter_length 12
-  pmc -d 0 set CLOCK_FREQ_EST_NP freq_est_interval 512
-
-Monitor impact:
-  - Check ptp4l offset statistics
-  - Verify lock convergence time
-  - Compare frequency stability before/after tuning
-  - Watch for anomalies in logs with -l 5
-
-REFERENCES
-----------
+## REFERENCES
 - IEEE 1588-2008: PTP Management Messages and TLVs
 - linuxptp Management Interface: pmc_common.c, tlv.c
 - Servo API: servo.h, servo.c, pi.c

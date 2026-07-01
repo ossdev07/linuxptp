@@ -3496,6 +3496,11 @@ int port_manage(struct port *p, struct port *ingress, struct ptp_message *msg)
 	case MID_TRANSPARENT_CLOCK_PORT_DATA_SET:
 	case MID_DELAY_MECHANISM:
 	case MID_LOG_MIN_PDELAY_REQ_INTERVAL:
+	case MID_TSPROC_FILTER_NP:
+	case MID_SERVO_SETTINGS_NP:
+	case MID_PI_CONSTANTS_NP:
+	case MID_CLOCK_FREQ_EST_NP:
+	case MID_SERVO_THRESHOLDS_NP:
 		port_management_send_error(p, ingress, msg, MID_NOT_SUPPORTED);
 		break;
 	default:
