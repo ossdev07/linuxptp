@@ -264,6 +264,28 @@ int tsproc_set_filter_length(struct tsproc *tsp, int filter_length)
 
 	return 0;
 }
+
+int tsproc_set_filter_type(struct tsproc *tsp, int filter_type)
+{
+	struct filter *new_filter;
+
+	if (!tsp)
+		return -1;
+
+	new_filter = filter_create((enum filter_type) filter_type,
+				  tsp->filter_length);
+	if (!new_filter)
+		return -1;
+
+	filter_destroy(tsp->delay_filter);
+	tsp->delay_filter = new_filter;
+	tsp->delay_filter_type = (enum filter_type) filter_type;
+	filter_reset(tsp->delay_filter);
+	tsp->filtered_delay_valid = 0;
+
+	return 0;
+}
+
 int tsproc_get_filter_length(struct tsproc *tsp)
 {
 	if (!tsp)

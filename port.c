@@ -1259,6 +1259,7 @@ static int port_management_set(struct port *target,
 		{
 			struct tsproc_filter_np *tf = (struct tsproc_filter_np *) tlv->data;
 			if (target->tsproc) {
+				tsproc_set_filter_type(target->tsproc, tf->filter_type);
 				if (tsproc_set_filter_length(target->tsproc, tf->filter_length) == 0)
 					respond = 1;
 			}

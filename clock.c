@@ -833,6 +833,20 @@ static int clock_management_set(struct clock *c, struct port *p,
 			}
 		}
 		break;
+	case MID_TSPROC_FILTER_NP:
+		{
+			struct tsproc_filter_np *tf = (struct tsproc_filter_np *) tlv->data;
+			if (c->tsproc) {
+				tsproc_set_filter_type(c->tsproc, tf->filter_type);
+				tsproc_set_filter_length(c->tsproc, tf->filter_length);
+				/* Do not set respond = 1 here. Let the SET request
+				 * propagate to port_manage() for each port so that
+				 * per-port tsproc instances are also updated.
+				 * The response is sent by port_management_set().
+				 */
+			}
+		}
+		break;
 	case MID_CLOCK_FREQ_EST_NP:
 		{
 			struct clock_freq_est_np *cf = (struct clock_freq_est_np *) tlv->data;
