@@ -1182,6 +1182,14 @@ static int port_management_fill_response(struct port *target,
 		pcn->delayAsymmetry = target->asymmetry;
 		datalen = sizeof(*pcn);
 		break;
+	case MID_TSPROC_FILTER_NP:
+		{
+			struct tsproc_filter_np *tf = (struct tsproc_filter_np *) tlv->data;
+			tf->filter_type = tsproc_get_filter_type(target->tsproc);
+			tf->filter_length = tsproc_get_filter_length(target->tsproc);
+			datalen = sizeof(*tf);
+		}
+		break;
 	default:
 		/* The caller should *not* respond to this message. */
 		tlv_extra_recycle(extra);
