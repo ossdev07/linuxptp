@@ -260,7 +260,7 @@ double pi_servo_get_kp(struct servo *servo)
 	struct pi_servo *s =
 			container_of(servo, struct pi_servo, servo);
 
-	return s->kp;
+	return s->configured_pi_kp;
 }
 
 double pi_servo_get_ki(struct servo *servo)
@@ -268,7 +268,7 @@ double pi_servo_get_ki(struct servo *servo)
 		struct pi_servo *s =
 				container_of(servo, struct pi_servo, servo);
 
-		return s->ki;
+		return s->configured_pi_ki;
 }
 double pi_servo_get_interval(struct servo *servo)
 {
