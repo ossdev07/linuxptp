@@ -49,6 +49,7 @@
 #include "tz.h"
 #include "uds.h"
 #include "util.h"
+#include "adap.h"
 
 #define N_CLOCK_PFD (N_POLLFD + 1) /* one extra per port, for the fault timer */
 
@@ -153,6 +154,7 @@ struct clock {
 	struct time_zone tz[MAX_TIME_ZONES];
 	struct ClockIdentity ext_gm_identity;
 	int ext_gm_steps_removed;
+	struct adap *adap;
 };
 
 struct clock the_clock;
@@ -365,6 +367,7 @@ void clock_destroy(struct clock *c)
 	if (c->clkid != CLOCK_REALTIME) {
 		phc_close(c->clkid);
 	}
+	adap_destroy(c->adap);
 	servo_destroy(c->servo);
 	tsproc_destroy(c->tsproc);
 	stats_destroy(c->stats.offset);
@@ -1670,6 +1673,13 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 
 	c->dds.numberPorts = c->nports;
 
+	/* Create the adaptive tuning engine */
+	c->adap = adap_create(c->config);
+	if (!c->adap) {
+		pr_err("failed to create adaptive engine");
+		/* Non-fatal; continue without adaptive tuning */
+	}
+
 	LIST_FOREACH(p, &c->ports, list) {
 		port_dispatch(p, EV_INITIALIZE, 0);
 	}
@@ -2439,6 +2449,14 @@ enum servo_state clock_synchronize(struct clock *c, tmv_t ingress, tmv_t origin)
 			tmv_to_nanoseconds(c->path_delay));
 	}
 
+	/* Feed sample to adaptive engine */
+	if (c->adap) {
+		adap_feed_sample(c->adap, offset,
+				 tmv_to_nanoseconds(c->path_delay),
+				 state, tmv_to_nanoseconds(ingress));
+		adap_evaluate(c->adap, c);
+	}
+
 	clock_notify_event(c, NOTIFY_TIME_SYNC);
 
 	return state;
@@ -2614,6 +2632,11 @@ static void handle_state_decision_event(struct clock *c)
 	c->best = best;
 	c->best_id = best_id;
 
+	/* Notify adaptive engine of GM change */
+	if (c->adap && best) {
+		adap_on_gm_change(c->adap, c, best_id);
+	}
+
 	LIST_FOREACH(piter, &c->ports, list) {
 		enum port_state ps;
 		enum fsm_event event;
@@ -2683,4 +2706,9 @@ struct servo *clock_servo(struct clock *c)
 enum servo_state clock_servo_state(struct clock *c)
 {
 	return c->servo_state;
+}
+
+struct adap *clock_get_adap(struct clock *c)
+{
+	return c->adap;
 }

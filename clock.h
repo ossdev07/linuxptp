@@ -30,6 +30,8 @@
 #include "tmv.h"
 #include "transport.h"
 
+struct adap; /* forward declaration */
+
 struct ptp_message; /*forward declaration*/
 
 /** Opaque type. */
@@ -398,5 +400,12 @@ double clock_rate_ratio(struct clock *c);
 
 void clock_set_freq_est_interval(struct clock *c, int freq_est_interval);
 int clock_get_freq_est_interval(struct clock *c);
+
+/**
+ * Obtain the adaptive tuning engine instance.
+ * @param c The clock instance.
+ * @return  A pointer to the clock's adaptive engine, or NULL if not created.
+ */
+struct adap *clock_get_adap(struct clock *c);
 
 #endif
