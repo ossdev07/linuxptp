@@ -107,11 +107,14 @@ do {							\
  *   TUNE: kp 0.700000 -> 0.500000
  *   TUNE: port[eth0] filter_length 8 -> 12
  */
-#define pr_tune(param, old_val, new_val, fmt_spec) \
-	do { \
-		print(LOG_NOTICE, "ptp4l", \
-		      "TUNE: " param " " fmt_spec " -> " fmt_spec, \
-		      (old_val), (new_val)); \
+
+#define pr_tune(param, old_val, new_val, fmt_spec)              \
+	do {                                                        \
+		print(LOG_NOTICE,                                        \
+		      "TUNE: %s " fmt_spec " -> " fmt_spec,              \
+		      param,                                             \
+		      (old_val),                                         \
+		      (new_val));                                        \
 	} while (0)
 
 /* For string-based parameters */
