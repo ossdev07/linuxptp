@@ -221,7 +221,26 @@ ADAP: GM changed to 00:1B:A1:23:45:67:89:AB, using default balanced mode
 ADAP: metrics reset
 ```
 
-### 5.2 Custom Profile (Programmatic API)
+### 5.2 Custom Profile (Deployment File)
+
+Set `adap_gm_profile_file` in the ptp4l config:
+```ini
+adap_gm_profile_file /etc/linuxptp/adap-gm-profiles.csv
+```
+
+Example profile file:
+```text
+# gmIdentity,label,numOffsetValues,offsetThreshold,kp,ki,interval,filterLength,freqEstInterval,stepThresholdNs,firstStepThresholdNs,maxFrequencyPpb
+001ba1.2345.6789ab,DC-east-core,8,200000,0.5,0.2,1.0,16,512,20000,20000,900000000
+```
+
+Expected behaviour on GM switch to this identity:
+```
+ADAP: GM changed to 00:1B:A1:23:45:67:89:AB, applying profile 'DC-east-core'
+ADAP: applied params: numOff=8 offThr=200000 kp=0.500 ki=0.200 ...
+```
+
+### 5.3 Custom Profile (Programmatic API)
 
 Using the C API to add a GM profile:
 ```c
@@ -242,7 +261,7 @@ ADAP: GM changed to 00:1B:A1:23:45:67:89:AB, applying profile 'DC-east-core'
 ADAP: applied params: numOff=8 offThr=200000 kp=0.500 ki=0.200 ...
 ```
 
-### 5.3 Profile Update and Removal
+### 5.4 Profile Update and Removal
 
 ```c
 // Update existing profile
@@ -252,7 +271,7 @@ adap_set_gm_profile(a, gm_id, &new_params, "DC-east-v2");
 adap_remove_gm_profile(a, gm_id);
 ```
 
-### 5.4 Manual GM Change Simulation
+### 5.5 Manual GM Change Simulation
 
 Trigger a BMC re-evaluation to simulate GM change:
 ```bash
@@ -356,11 +375,12 @@ sudo valgrind --leak-check=full --show-leak-kinds=all \
 
 # Adaptive tuning engine
 adap_tuning_enabled       1         # Enable adaptive tuning (default: 1)
-adap_tuning_mode          balanced  # Initial mode: conservative|balanced|aggressive
-                                    # If enabled and mode=balanced, engine auto-switches
-                                    # between modes based on network conditions
+adap_tuning_mode          auto      # auto|conservative|balanced|aggressive
+                                    # auto switches based on measured conditions.
+                                    # Named modes are fixed deployment profiles.
 adap_eval_interval        1.0       # Seconds between evaluations (0.1 - 60.0)
 adap_sample_window        10        # Rolling window for metrics (2 - 100)
+adap_gm_profile_file      /etc/linuxptp/adap-gm-profiles.csv
 
 # Traditional servo settings (still apply as initial/fallback values)
 servo_num_offset_values   10
@@ -370,6 +390,13 @@ first_step_threshold      0.00002
 max_frequency             900000000
 pi_proportional_const     0.0
 pi_integral_const         0.0
+```
+
+Per-GM profile file format:
+```text
+# gmIdentity,label,numOffsetValues,offsetThreshold,kp,ki,interval,filterLength,freqEstInterval,stepThresholdNs,firstStepThresholdNs,maxFrequencyPpb
+001ba1.2345.6789ab,Nokia-core-A,8,200000,0.5,0.2,1.0,16,512,20000,20000,900000000
+001ba1.2345.6789ac,Nokia-edge-B,5,100000,0.7,0.3,1.0,10,256,20000,20000,900000000
 ```
 
 ### 8.2 Deployment Profiles
@@ -432,7 +459,7 @@ journalctl -u ptp4l | grep "REJECTED"
 2. **Phase 2 - Conservative:** Enable with `adap_tuning_mode=conservative`.
    Observe effect on offset jitter and lock stability.
 
-3. **Phase 3 - Balanced:** Allow auto-mode by setting `adap_tuning_mode=balanced`.
+3. **Phase 3 - Auto:** Allow auto-mode by setting `adap_tuning_mode=auto`.
    Monitor mode transitions during network condition changes.
 
 4. **Phase 4 - Full Auto:** Enable aggressive auto-detection. Enable if network

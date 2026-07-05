@@ -17,7 +17,9 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+#include <errno.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -38,6 +40,7 @@
  */
 #define ADAP_DEFAULT_SAMPLE_WINDOW  10
 #define ADAP_DEFAULT_EVAL_INTERVAL  1.0  /* seconds */
+#define ADAP_DEFAULT_STEP_THRESHOLD_NS 20000.0
 
 /* Conservative mode (noisy/jittery networks) */
 static const struct adap_params default_conservative = {
@@ -48,8 +51,8 @@ static const struct adap_params default_conservative = {
 	.interval               = 1.0,
 	.filter_length          = 16,
 	.freq_est_interval      = 512,
-	.step_threshold_ns      = 0.00002,
-	.first_step_threshold_ns = 0.00002,
+	.step_threshold_ns      = ADAP_DEFAULT_STEP_THRESHOLD_NS,
+	.first_step_threshold_ns = ADAP_DEFAULT_STEP_THRESHOLD_NS,
 	.max_frequency_ppb      = 900000000,
 };
 
@@ -62,8 +65,8 @@ static const struct adap_params default_balanced = {
 	.interval               = 1.0,
 	.filter_length          = 10,
 	.freq_est_interval      = 256,
-	.step_threshold_ns      = 0.00002,
-	.first_step_threshold_ns = 0.00002,
+	.step_threshold_ns      = ADAP_DEFAULT_STEP_THRESHOLD_NS,
+	.first_step_threshold_ns = ADAP_DEFAULT_STEP_THRESHOLD_NS,
 	.max_frequency_ppb      = 900000000,
 };
 
@@ -76,8 +79,8 @@ static const struct adap_params default_aggressive = {
 	.interval               = 1.0,
 	.filter_length          = 6,
 	.freq_est_interval      = 128,
-	.step_threshold_ns      = 0.00002,
-	.first_step_threshold_ns = 0.00002,
+	.step_threshold_ns      = ADAP_DEFAULT_STEP_THRESHOLD_NS,
+	.first_step_threshold_ns = ADAP_DEFAULT_STEP_THRESHOLD_NS,
 	.max_frequency_ppb      = 900000000,
 };
 
@@ -108,6 +111,7 @@ struct adap {
 
 	/* Packet loss tracking */
 	int64_t         last_sample_ts;
+	double          expected_sample_interval_ns;
 	int             expected_samples;
 	int             missed_samples;
 
@@ -163,6 +167,61 @@ static uint64_t get_monotonic_ns(void)
 	return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
+static void adap_load_gm_profiles(struct adap *a, const char *path)
+{
+	struct ClockIdentity gm_id;
+	struct adap_params params;
+	char line[512], gm[64], label[64];
+	FILE *fp;
+	int lineno = 0;
+
+	if (!a || !path || !path[0])
+		return;
+
+	fp = fopen(path, "r");
+	if (!fp) {
+		pr_warning("ADAP: failed to open GM profile file %s: %s",
+			   path, strerror(errno));
+		return;
+	}
+
+	while (fgets(line, sizeof(line), fp)) {
+		char *p = line;
+		int n;
+
+		lineno++;
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (*p == '#' || *p == '\n' || *p == '\0')
+			continue;
+
+		memset(&params, 0, sizeof(params));
+		n = sscanf(p, " %63[^,],%63[^,],%d,%d,%lf,%lf,%lf,%d,%d,%lf,%lf,%d",
+			   gm, label,
+			   &params.num_offset_values,
+			   &params.offset_threshold,
+			   &params.kp,
+			   &params.ki,
+			   &params.interval,
+			   &params.filter_length,
+			   &params.freq_est_interval,
+			   &params.step_threshold_ns,
+			   &params.first_step_threshold_ns,
+			   &params.max_frequency_ppb);
+		if (n != 12 || str2cid(gm, &gm_id)) {
+			pr_warning("ADAP: ignoring invalid GM profile %s:%d",
+				   path, lineno);
+			continue;
+		}
+		if (adap_set_gm_profile(a, gm_id, &params, label)) {
+			pr_warning("ADAP: failed to add GM profile %s:%d",
+				   path, lineno);
+		}
+	}
+
+	fclose(fp);
+}
+
 struct adap *adap_create(struct config *cfg)
 {
 	struct adap *a;
@@ -184,20 +243,27 @@ struct adap *adap_create(struct config *cfg)
 	if (a->eval_interval_s <= 0.0)
 		a->eval_interval_s = ADAP_DEFAULT_EVAL_INTERVAL;
 
-	/* Parse initial mode from config */
+	/* Parse initial mode from config. Only "auto" enables mode switching. */
 	{
 		const char *mode_str = config_get_string(cfg, NULL, "adap_tuning_mode");
-		if (!strcmp(mode_str, "conservative"))
+		if (!strcmp(mode_str, "conservative")) {
 			a->mode = ADAP_MODE_CONSERVATIVE;
-		else if (!strcmp(mode_str, "aggressive"))
+			a->manual_mode = 1;
+		} else if (!strcmp(mode_str, "aggressive")) {
 			a->mode = ADAP_MODE_AGGRESSIVE;
-		else
+			a->manual_mode = 1;
+		} else if (!strcmp(mode_str, "balanced")) {
 			a->mode = ADAP_MODE_BALANCED;
+			a->manual_mode = 1;
+		} else {
+			a->mode = ADAP_MODE_BALANCED;
+			a->manual_mode = 0;
+		}
 	}
 
-	a->manual_mode = 0;
 	a->last_eval_ts = 0;
 	a->last_sample_ts = 0;
+	a->expected_sample_interval_ns = 0.0;
 	a->expected_samples = 0;
 	a->missed_samples = 0;
 
@@ -215,14 +281,18 @@ struct adap *adap_create(struct config *cfg)
 
 	LIST_INIT(&a->gm_profiles);
 
+	adap_load_gm_profiles(a,
+			      config_get_string(cfg, NULL,
+						"adap_gm_profile_file"));
+
 	/* Initialize metrics */
 	memset(&a->metrics, 0, sizeof(a->metrics));
 	a->metrics.sampling_interval_s = a->eval_interval_s;
 
-	pr_info("ADAP: created adaptive engine, mode=%s window=%d enabled=%d",
+	pr_info("ADAP: created adaptive engine, mode=%s window=%d enabled=%d auto=%d",
 		a->mode == ADAP_MODE_CONSERVATIVE ? "conservative" :
 		a->mode == ADAP_MODE_AGGRESSIVE ? "aggressive" : "balanced",
-		window, a->enabled);
+		window, a->enabled, !a->manual_mode);
 
 	return a;
 }
@@ -254,14 +324,22 @@ void adap_feed_sample(struct adap *a, int64_t offset, int64_t delay,
 
 	/* Track packet loss */
 	if (a->last_sample_ts != 0) {
-		/* If more than 2x the expected interval passed, count as loss */
 		uint64_t elapsed = local_ts - a->last_sample_ts;
-		double expected_ns = a->eval_interval_s * 1e9;
 
-		if (elapsed > (uint64_t)(expected_ns * 2.5)) {
-			int lost = (int)(elapsed / expected_ns) - 1;
+		if (a->expected_sample_interval_ns > 0.0 &&
+		    elapsed > (uint64_t)(a->expected_sample_interval_ns * 2.5)) {
+			int lost = (int)(elapsed /
+					 a->expected_sample_interval_ns) - 1;
 			a->missed_samples += lost;
 			pr_debug("ADAP: detected %d lost sync(s)", lost);
+		} else if (elapsed > 0) {
+			if (a->expected_sample_interval_ns == 0.0) {
+				a->expected_sample_interval_ns = (double) elapsed;
+			} else {
+				a->expected_sample_interval_ns =
+					0.8 * a->expected_sample_interval_ns +
+					0.2 * (double) elapsed;
+			}
 		}
 	}
 	a->last_sample_ts = local_ts;
@@ -297,6 +375,7 @@ void adap_reset_metrics(struct adap *a)
 	a->missed_samples = 0;
 	a->expected_samples = 0;
 	a->last_sample_ts = 0;
+	a->expected_sample_interval_ns = 0.0;
 	a->last_eval_ts = 0;
 	memset(&a->metrics, 0, sizeof(a->metrics));
 	a->metrics.sampling_interval_s = a->eval_interval_s;
@@ -372,6 +451,38 @@ static const struct adap_params *adap_get_mode_params(enum adap_tuning_mode mode
 	}
 }
 
+static int adap_params_valid(const struct adap_params *p)
+{
+	if (!p)
+		return 0;
+	if (p->num_offset_values < 1 || p->num_offset_values > 100)
+		return 0;
+	if (p->offset_threshold < 0)
+		return 0;
+	if (p->kp < 0.0 || p->kp > 10.0 || !isfinite(p->kp))
+		return 0;
+	if (p->ki < 0.0 || p->ki > 10.0 || !isfinite(p->ki))
+		return 0;
+	if (p->interval <= 0.0 || p->interval > 100.0 ||
+	    !isfinite(p->interval))
+		return 0;
+	if (p->filter_length < 1 || p->filter_length > 256)
+		return 0;
+	if (p->freq_est_interval < 1 || p->freq_est_interval > 4096)
+		return 0;
+	if (p->step_threshold_ns < 0.0 || p->step_threshold_ns > 1e9 ||
+	    !isfinite(p->step_threshold_ns))
+		return 0;
+	if (p->first_step_threshold_ns < 0.0 ||
+	    p->first_step_threshold_ns > 1e9 ||
+	    !isfinite(p->first_step_threshold_ns))
+		return 0;
+	if (p->max_frequency_ppb < 0 || p->max_frequency_ppb > 1000000000)
+		return 0;
+
+	return 1;
+}
+
 void adap_get_default_params(struct adap *a, struct adap_params *params)
 {
 	const struct adap_params *p;
@@ -390,6 +501,10 @@ void adap_apply_params(struct clock *c, struct adap_params *params)
 
 	if (!c || !params)
 		return;
+	if (!adap_params_valid(params)) {
+		pr_warning("ADAP: refusing invalid tuning parameters");
+		return;
+	}
 
 	sv = clock_servo(c);
 	if (!sv)
@@ -403,7 +518,12 @@ void adap_apply_params(struct clock *c, struct adap_params *params)
 	servo_set_max_frequency(sv, params->max_frequency_ppb);
 
 	/* Apply PI constants */
-	pi_servo_set_constants(sv, params->kp, params->ki, params->interval);
+	if (clock_servo_type(c) == CLOCK_SERVO_PI) {
+		pi_servo_set_constants(sv, params->kp, params->ki,
+				       params->interval);
+	} else {
+		pr_debug("ADAP: skipping PI constants for non-PI servo");
+	}
 
 	/* Apply tsproc filter length */
 	tsp = clock_get_tsproc(c);
@@ -560,6 +680,11 @@ int adap_set_gm_profile(struct adap *a, struct ClockIdentity gm_id,
 
 	if (!a || !params)
 		return -1;
+	if (!adap_params_valid(params)) {
+		pr_warning("ADAP: rejected invalid GM profile for %s",
+			   cid2str(&gm_id));
+		return -1;
+	}
 
 	/* Check if profile already exists */
 	profile = adap_find_gm_profile(a, gm_id);

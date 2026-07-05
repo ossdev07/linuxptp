@@ -407,9 +407,10 @@ struct config_item config_tab[] = {
 
 	/* Adaptive tuning engine options */
 	GLOB_ITEM_INT("adap_tuning_enabled", 1, 0, 1),
-	GLOB_ITEM_STR("adap_tuning_mode", "balanced"),
+	GLOB_ITEM_STR("adap_tuning_mode", "auto"),
 	GLOB_ITEM_DBL("adap_eval_interval", 1.0, 0.1, 60.0),
 	GLOB_ITEM_INT("adap_sample_window", 10, 2, 100),
+	GLOB_ITEM_STR("adap_gm_profile_file", ""),
 };
 
 static struct unicast_master_table *current_uc_mtab;

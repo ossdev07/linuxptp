@@ -272,6 +272,13 @@ int clock_poll(struct clock *c);
 struct servo *clock_servo(struct clock *c);
 
 /**
+ * Obtain the configured type of clock's servo.
+ * @param c The clock instance.
+ * @return  The configured servo implementation.
+ */
+enum servo_type clock_servo_type(struct clock *c);
+
+/**
  * Obtain the current state of clock's servo.
  * @param c The clock instance.
  * @return  The current state of the clock's servo.

@@ -118,6 +118,7 @@ struct clock {
 	int sde;
 	int free_running;
 	int freq_est_interval;
+	int sync_interval;
 	int local_sync_uncertain;
 	int write_phase_mode;
 	int grand_master_capable; /* for 802.1AS only */
@@ -834,7 +835,7 @@ static int clock_management_set(struct clock *c, struct port *p,
 		{
 			struct pi_constants_np *pc = (struct pi_constants_np *) tlv->data;
 			struct servo *sv = clock_servo(c);
-			if (sv) {
+			if (sv && c->servo_type == CLOCK_SERVO_PI) {
 				double old_kp = pi_servo_get_kp(sv);
 				double old_ki = pi_servo_get_ki(sv);
 				double old_interval = pi_servo_get_interval(sv);
@@ -855,6 +856,10 @@ static int clock_management_set(struct clock *c, struct port *p,
 				pr_tune("interval", old_interval, pc->interval, "%.6f");
 				respond = 1;
 				*changed = 1;
+			} else {
+				pr_err("REJECTED: PI_CONSTANTS_NP requires clock_servo pi");
+				clock_management_send_error(p, req, MID_NOT_SUPPORTED);
+				return 1;
 			}
 		}
 		break;
@@ -2471,6 +2476,7 @@ void clock_sync_interval(struct clock *c, int n)
 {
 	int shift;
 
+	c->sync_interval = n;
 	shift = c->freq_est_interval - n;
 	if (shift < 0)
 		shift = 0;
@@ -2503,11 +2509,7 @@ void clock_set_freq_est_interval(struct clock *c, int freq_est_interval)
 		return;
 
 	c->freq_est_interval = freq_est_interval;
-
-	/* The effective sync interval is port-specific and recomputed on the
-	 * next sync interval update. This setter updates the underlying window
-	 * size for future clock_sync_interval calls.
-	 */
+	clock_sync_interval(c, c->sync_interval);
 }
 int clock_get_freq_est_interval(struct clock *c)
 {
@@ -2632,8 +2634,8 @@ static void handle_state_decision_event(struct clock *c)
 	c->best = best;
 	c->best_id = best_id;
 
-	/* Notify adaptive engine of GM change */
-	if (c->adap && best) {
+	/* Notify adaptive engine only when the selected GM actually changed. */
+	if (fresh_best && c->adap && best) {
 		adap_on_gm_change(c->adap, c, best_id);
 	}
 
@@ -2701,6 +2703,11 @@ double clock_rate_ratio(struct clock *c)
 struct servo *clock_servo(struct clock *c)
 {
 	return c->servo;
+}
+
+enum servo_type clock_servo_type(struct clock *c)
+{
+	return c->servo_type;
 }
 
 enum servo_state clock_servo_state(struct clock *c)
