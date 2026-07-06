@@ -50,7 +50,7 @@ static const struct adap_params default_conservative = {
 	.ki                     = 0.2,
 	.interval               = 1.0,
 	.filter_length          = 16,
-	.freq_est_interval      = 512,
+	.freq_est_interval      = 3,
 	.step_threshold_ns      = ADAP_DEFAULT_STEP_THRESHOLD_NS,
 	.first_step_threshold_ns = ADAP_DEFAULT_STEP_THRESHOLD_NS,
 	.max_frequency_ppb      = 900000000,
@@ -64,7 +64,7 @@ static const struct adap_params default_balanced = {
 	.ki                     = 0.3,
 	.interval               = 1.0,
 	.filter_length          = 10,
-	.freq_est_interval      = 256,
+	.freq_est_interval      = 2,
 	.step_threshold_ns      = ADAP_DEFAULT_STEP_THRESHOLD_NS,
 	.first_step_threshold_ns = ADAP_DEFAULT_STEP_THRESHOLD_NS,
 	.max_frequency_ppb      = 900000000,
@@ -78,7 +78,7 @@ static const struct adap_params default_aggressive = {
 	.ki                     = 0.5,
 	.interval               = 1.0,
 	.filter_length          = 6,
-	.freq_est_interval      = 128,
+	.freq_est_interval      = 1,
 	.step_threshold_ns      = ADAP_DEFAULT_STEP_THRESHOLD_NS,
 	.first_step_threshold_ns = ADAP_DEFAULT_STEP_THRESHOLD_NS,
 	.max_frequency_ppb      = 900000000,
@@ -319,12 +319,17 @@ void adap_destroy(struct adap *a)
 void adap_feed_sample(struct adap *a, int64_t offset, int64_t delay,
 		      enum servo_state state, uint64_t local_ts)
 {
+	uint64_t sample_ts;
+
 	if (!a || !a->enabled)
 		return;
 
+	(void)local_ts;
+	sample_ts = get_monotonic_ns();
+
 	/* Track packet loss */
 	if (a->last_sample_ts != 0) {
-		uint64_t elapsed = local_ts - a->last_sample_ts;
+		uint64_t elapsed = sample_ts - a->last_sample_ts;
 
 		if (a->expected_sample_interval_ns > 0.0 &&
 		    elapsed > (uint64_t)(a->expected_sample_interval_ns * 2.5)) {
@@ -342,7 +347,7 @@ void adap_feed_sample(struct adap *a, int64_t offset, int64_t delay,
 			}
 		}
 	}
-	a->last_sample_ts = local_ts;
+	a->last_sample_ts = sample_ts;
 
 	/* Store sample in circular buffer */
 	a->offset_samples[a->sample_index] = offset;
@@ -468,7 +473,7 @@ static int adap_params_valid(const struct adap_params *p)
 		return 0;
 	if (p->filter_length < 1 || p->filter_length > 256)
 		return 0;
-	if (p->freq_est_interval < 1 || p->freq_est_interval > 4096)
+	if (p->freq_est_interval < -8 || p->freq_est_interval > 20)
 		return 0;
 	if (p->step_threshold_ns < 0.0 || p->step_threshold_ns > 1e9 ||
 	    !isfinite(p->step_threshold_ns))

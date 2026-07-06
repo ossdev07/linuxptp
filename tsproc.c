@@ -248,19 +248,26 @@ void tsproc_reset(struct tsproc *tsp, int full)
 int tsproc_set_filter_length(struct tsproc *tsp, int filter_length)
 {
 	struct filter *new_filter;
+	tmv_t filtered_delay;
+	int filtered_delay_valid;
 
 	if (!tsp || filter_length <= 0)
 		return -1;
+	if (filter_length == tsp->filter_length)
+		return 0;
 
 	new_filter = filter_create(tsp->delay_filter_type, filter_length);
 	if (!new_filter)
 		return -1;
 
+	filtered_delay = tsp->filtered_delay;
+	filtered_delay_valid = tsp->filtered_delay_valid;
 	filter_destroy(tsp->delay_filter);
 	tsp->delay_filter = new_filter;
 	tsp->filter_length = filter_length;
 	filter_reset(tsp->delay_filter);
-	tsp->filtered_delay_valid = 0;
+	tsp->filtered_delay = filtered_delay;
+	tsp->filtered_delay_valid = filtered_delay_valid;
 
 	return 0;
 }
@@ -268,20 +275,30 @@ int tsproc_set_filter_length(struct tsproc *tsp, int filter_length)
 int tsproc_set_filter_type(struct tsproc *tsp, int filter_type)
 {
 	struct filter *new_filter;
+	tmv_t filtered_delay;
+	int filtered_delay_valid;
 
 	if (!tsp)
 		return -1;
+	if (filter_type < FILTER_MOVING_AVERAGE ||
+	    filter_type > FILTER_MOVING_MEDIAN)
+		return -1;
+	if (filter_type == tsp->delay_filter_type)
+		return 0;
 
 	new_filter = filter_create((enum filter_type) filter_type,
 				  tsp->filter_length);
 	if (!new_filter)
 		return -1;
 
+	filtered_delay = tsp->filtered_delay;
+	filtered_delay_valid = tsp->filtered_delay_valid;
 	filter_destroy(tsp->delay_filter);
 	tsp->delay_filter = new_filter;
 	tsp->delay_filter_type = (enum filter_type) filter_type;
 	filter_reset(tsp->delay_filter);
-	tsp->filtered_delay_valid = 0;
+	tsp->filtered_delay = filtered_delay;
+	tsp->filtered_delay_valid = filtered_delay_valid;
 
 	return 0;
 }

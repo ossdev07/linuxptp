@@ -1961,8 +1961,11 @@ int clock_manage(struct clock *c, struct port *p, struct ptp_message *msg)
 			if (mgt_set->length >= 2 + (int)sizeof(struct clock_freq_est_np)) {
 				struct clock_freq_est_np *cf =
 					(struct clock_freq_est_np *) mgt_set->data;
-				if (cf->freq_est_interval < 1 || cf->freq_est_interval > 4096) {
-					pr_err("REJECTED: freq_est_interval %d out of range [1, 4096]",
+				if (cf->freq_est_interval < -8 ||
+				    cf->freq_est_interval > 20 ||
+				    cf->freq_est_interval - c->sync_interval >=
+				    (int)(sizeof(int) * 8)) {
+					pr_err("REJECTED: freq_est_interval %d out of safe range",
 					       cf->freq_est_interval);
 					clock_management_send_error(p, msg, MID_WRONG_VALUE);
 					return changed;
@@ -2001,6 +2004,14 @@ int clock_manage(struct clock *c, struct port *p, struct ptp_message *msg)
 			if (mgt_set->length >= 2 + (int)sizeof(struct tsproc_filter_np)) {
 				struct tsproc_filter_np *tf =
 					(struct tsproc_filter_np *) mgt_set->data;
+				if (tf->filter_type < FILTER_MOVING_AVERAGE ||
+				    tf->filter_type > FILTER_MOVING_MEDIAN) {
+					pr_err("REJECTED: filter_type %d out of range [%d, %d]",
+					       tf->filter_type, FILTER_MOVING_AVERAGE,
+					       FILTER_MOVING_MEDIAN);
+					clock_management_send_error(p, msg, MID_WRONG_VALUE);
+					return changed;
+				}
 				if (tf->filter_length < 1 || tf->filter_length > 256) {
 					pr_err("REJECTED: filter_length %d out of range [1, 256]",
 					       tf->filter_length);

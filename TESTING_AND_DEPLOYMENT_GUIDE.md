@@ -231,7 +231,7 @@ adap_gm_profile_file /etc/linuxptp/adap-gm-profiles.csv
 Example profile file:
 ```text
 # gmIdentity,label,numOffsetValues,offsetThreshold,kp,ki,interval,filterLength,freqEstInterval,stepThresholdNs,firstStepThresholdNs,maxFrequencyPpb
-001ba1.2345.6789ab,DC-east-core,8,200000,0.5,0.2,1.0,16,512,20000,20000,900000000
+001ba1.2345.6789ab,DC-east-core,8,200000,0.5,0.2,1.0,16,3,20000,20000,900000000
 ```
 
 Expected behaviour on GM switch to this identity:
@@ -250,7 +250,7 @@ struct adap_params params = {
     .num_offset_values = 8,
     .kp = 0.5, .ki = 0.2,
     .filter_length = 16,
-    .freq_est_interval = 512,
+    .freq_est_interval = 3,
 };
 adap_set_gm_profile(a, gm_id, &params, "DC-east-core");
 ```
@@ -310,7 +310,7 @@ sudo pmc -d 0 set PRIORITY1 val 128
 
 | Parameter         | Min | Max | Below Min | Above Max |
 |-------------------|-----|-----|-----------|-----------|
-| freq_est_interval | 1   | 4096| 0 ✗       | 4097 ✗    |
+| freq_est_interval | -8  | 20  | -9 ✗      | 21 ✗      |
 
 ### 6.5 Servo Thresholds (MID_SERVO_THRESHOLDS_NP)
 
@@ -395,8 +395,8 @@ pi_integral_const         0.0
 Per-GM profile file format:
 ```text
 # gmIdentity,label,numOffsetValues,offsetThreshold,kp,ki,interval,filterLength,freqEstInterval,stepThresholdNs,firstStepThresholdNs,maxFrequencyPpb
-001ba1.2345.6789ab,Nokia-core-A,8,200000,0.5,0.2,1.0,16,512,20000,20000,900000000
-001ba1.2345.6789ac,Nokia-edge-B,5,100000,0.7,0.3,1.0,10,256,20000,20000,900000000
+001ba1.2345.6789ab,Nokia-core-A,8,200000,0.5,0.2,1.0,16,3,20000,20000,900000000
+001ba1.2345.6789ac,Nokia-edge-B,5,100000,0.7,0.3,1.0,10,2,20000,20000,900000000
 ```
 
 ### 8.2 Deployment Profiles
@@ -521,7 +521,7 @@ test_byte_order()
 pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 8 offsetThreshold 150000
 pmc -d 0 set PI_CONSTANTS_NP kp 0.75 ki 0.35 interval 1.2
 pmc -d 0 set TSPROC_FILTER_NP filter_type 0 filter_length 10
-pmc -d 0 set CLOCK_FREQ_EST_NP freq_est_interval 512
+pmc -d 0 set CLOCK_FREQ_EST_NP freq_est_interval 3
 
 # Verify changes
 pmc -d 0 get SERVO_SETTINGS_NP

@@ -1269,15 +1269,23 @@ static int port_management_set(struct port *target,
 			if (target->tsproc) {
 				int old_type = tsproc_get_filter_type(target->tsproc);
 				int old_len = tsproc_get_filter_length(target->tsproc);
-				/* Validate filter length */
+				/* Validate filter settings. */
+				if (tf->filter_type < FILTER_MOVING_AVERAGE ||
+				    tf->filter_type > FILTER_MOVING_MEDIAN) {
+					pr_err("REJECTED: port %s TSPROC_FILTER_NP filter_type %d "
+					       "out of range [%d, %d]", target->log_name,
+					       tf->filter_type, FILTER_MOVING_AVERAGE,
+					       FILTER_MOVING_MEDIAN);
+					break;
+				}
 				if (tf->filter_length < 1 || tf->filter_length > 256) {
 					pr_err("REJECTED: port %s TSPROC_FILTER_NP filter_length %d "
 					       "out of range [1, 256]", target->log_name,
 					       tf->filter_length);
 					break;
 				}
-				tsproc_set_filter_type(target->tsproc, tf->filter_type);
-				if (tsproc_set_filter_length(target->tsproc, tf->filter_length) == 0) {
+				if (tsproc_set_filter_type(target->tsproc, tf->filter_type) == 0 &&
+				    tsproc_set_filter_length(target->tsproc, tf->filter_length) == 0) {
 					pr_tune("port[%s] filter_type", old_type, tf->filter_type, "%d");
 					pr_tune("port[%s] filter_length", old_len, tf->filter_length, "%d");
 					respond = 1;

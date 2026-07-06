@@ -3,7 +3,11 @@
 # Adaptive Tuning Engine Test Suite for linuxptp
 # Tests the adaptive automation layer and per-GM profiles
 #
-# Usage: ./test_adap_tuning.sh [pmc_port]
+# Usage: ./test_adap_tuning.sh [domain]
+#   Example: ./test_adap_tuning.sh 44
+#   Optional env:
+#     PMC_TRANSPORT="-u"        # default: UDS
+#     PMC_BOUNDARY_HOPS=0       # default: 0
 #   Requires: ptp4l running with management interface, pmc tool
 #
 # Phases:
@@ -14,11 +18,19 @@
 #   5. Cleanup & restore defaults
 #
 
-set -e
+set +e
 
-PMC_PORT=${1:-0}
+PMC_DOMAIN=${1:-${PMC_DOMAIN:-0}}
+PMC_TRANSPORT=${PMC_TRANSPORT:--u}
+PMC_BOUNDARY_HOPS=${PMC_BOUNDARY_HOPS:-0}
 SLEEP_SHORT=1
 SLEEP_LONG=3
+
+PMC_ARGS=()
+if [ -n "$PMC_TRANSPORT" ]; then
+    PMC_ARGS+=("$PMC_TRANSPORT")
+fi
+PMC_ARGS+=("-d" "$PMC_DOMAIN" "-b" "$PMC_BOUNDARY_HOPS")
 
 # Colours for output
 PASS="\033[32mPASS\033[0m"
@@ -40,14 +52,18 @@ print_section() {
 check() {
     local name="$1"
     local expect_success="$2"
+    local output rc
     total_tests=$((total_tests + 1))
     # Run the command, capture output
     shift 2
-    output=$("$@" 2>&1) || true
-    if [ "$expect_success" -eq 1 ] && echo "$output" | grep -qiE "(failed|error|rejected)"; then
+    output=$("$@" 2>&1)
+    rc=$?
+    if [ "$expect_success" -eq 1 ] &&
+       { [ "$rc" -ne 0 ] || echo "$output" | grep -qiE "(failed|error|rejected|MANAGEMENT_ERROR_STATUS)"; }; then
         echo -e "  [${FAIL}] $name"
         echo "    Output: $output"
-    elif [ "$expect_success" -eq 0 ] && ! echo "$output" | grep -qiE "(failed|error|rejected)"; then
+    elif [ "$expect_success" -eq 0 ] &&
+         { [ "$rc" -eq 0 ] && ! echo "$output" | grep -qiE "(failed|error|rejected|MANAGEMENT_ERROR_STATUS)"; }; then
         # Expected failure but got success
         echo -e "  [${FAIL}] $name (expected rejection but was accepted)"
         echo "    Output: $output"
@@ -59,13 +75,13 @@ check() {
 }
 
 pmc_get_raw() {
-    pmc -d $PMC_PORT get "$1" 2>/dev/null || echo "GET_FAILED"
+    pmc "${PMC_ARGS[@]}" get "$1"
 }
 
 pmc_set_raw() {
     local tlv=$1
     shift
-    pmc -d $PMC_PORT set "$tlv" "$@" 2>/dev/null || echo "SET_FAILED"
+    pmc "${PMC_ARGS[@]}" set "$tlv" "$@"
 }
 
 # ==============================================================================
@@ -81,11 +97,16 @@ else
 fi
 
 echo -e "  [${INFO}] Checking ptp4l reachability via pmc..."
-pmc_get_raw "NULL_MANAGEMENT" > /dev/null || {
+echo "    pmc args: ${PMC_ARGS[*]}"
+set +e
+pmc_output=$(pmc_get_raw "NULL_MANAGEMENT" 2>&1)
+pmc_rc=$?
+if [ "$pmc_rc" -ne 0 ]; then
     echo -e "    ${FAIL} Cannot reach ptp4l. Ensure ptp4l is running."
+    echo "    Output: $pmc_output"
     echo "    Start with: sudo ptp4l -i eth0 -m &"
     exit 1
-}
+fi
 echo -e "    ptp4l reachable ✓"
 
 echo -e "  [${INFO}] Running Python struct validation..."
@@ -122,7 +143,7 @@ check "SET conservative PI constants" 1 pmc_get_raw "PI_CONSTANTS_NP"
 pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 16"
 check "SET conservative filter length" 1 pmc_get_raw "TSPROC_FILTER_NP"
 
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 512"
+pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 3"
 check "SET conservative freq est interval" 1 pmc_get_raw "CLOCK_FREQ_EST_NP"
 
 echo ""
@@ -130,7 +151,7 @@ echo -e "  [${INFO}] Restoring BALANCED defaults..."
 pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold 100000"
 pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 1.0"
 pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 10"
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 256"
+pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 2"
 
 echo ""
 echo -e "  [${INFO}] Test 2.3: Force AGGRESSIVE params..."
@@ -143,7 +164,7 @@ check "SET aggressive PI constants" 1 pmc_get_raw "PI_CONSTANTS_NP"
 pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 6"
 check "SET aggressive filter length" 1 pmc_get_raw "TSPROC_FILTER_NP"
 
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 128"
+pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 1"
 check "SET aggressive freq est interval" 1 pmc_get_raw "CLOCK_FREQ_EST_NP"
 
 # ==============================================================================
@@ -199,10 +220,10 @@ check "filter_length=257 (above max, should reject)" 0 pmc_set_raw "TSPROC_FILTE
 
 echo ""
 echo -e "  [${INFO}] Test 4.4: Boundary values for CLOCK_FREQ_EST_NP..."
-check "freq_est_interval=1 (min)" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 1"
-check "freq_est_interval=4096 (max)" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 4096"
-check "freq_est_interval=0 (below min, should reject)" 0 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 0"
-check "freq_est_interval=4097 (above max, should reject)" 0 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 4097"
+check "freq_est_interval=-8 (min)" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval -8"
+check "freq_est_interval=20 (max)" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 20"
+check "freq_est_interval=-9 (below min, should reject)" 0 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval -9"
+check "freq_est_interval=21 (above max, should reject)" 0 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 21"
 
 echo ""
 echo -e "  [${INFO}] Test 4.5: Boundary values for SERVO_THRESHOLDS_NP..."
@@ -214,7 +235,7 @@ check "step_threshold=-0.1 (negative, should reject)" 0 pmc_set_raw "SERVO_THRES
 pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold 100000" > /dev/null
 pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 1.0" > /dev/null
 pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 10" > /dev/null
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 256" > /dev/null
+pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 2" > /dev/null
 
 # ==============================================================================
 print_section "Phase 5: Stress Test – Rapid Parameter Cycling"
@@ -250,7 +271,7 @@ echo -e "  [${INFO}] Restoring all parameters to defaults..."
 pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold 100000" > /dev/null
 pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 1.0" > /dev/null
 pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 10" > /dev/null
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 256" > /dev/null
+pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 2" > /dev/null
 pmc_set_raw "SERVO_THRESHOLDS_NP" "step_threshold 0.0 first_step_threshold 0.0 max_frequency 900000000" > /dev/null
 
 echo -e "  [${INFO}] Verifying final state..."
