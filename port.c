@@ -1286,8 +1286,12 @@ static int port_management_set(struct port *target,
 				}
 				if (tsproc_set_filter_type(target->tsproc, tf->filter_type) == 0 &&
 				    tsproc_set_filter_length(target->tsproc, tf->filter_length) == 0) {
-					pr_tune("port[%s] filter_type", old_type, tf->filter_type, "%d");
-					pr_tune("port[%s] filter_length", old_len, tf->filter_length, "%d");
+					pr_info("TUNE: port[%s] filter_type %d -> %d",
+						target->log_name, old_type,
+						tf->filter_type);
+					pr_info("TUNE: port[%s] filter_length %d -> %d",
+						target->log_name, old_len,
+						tf->filter_length);
 					respond = 1;
 				}
 			}

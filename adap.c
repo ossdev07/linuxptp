@@ -623,6 +623,13 @@ void adap_on_gm_change(struct adap *a, struct clock *c,
 
 	id_str = cid2str(&gm_id);
 
+	if (!a->enabled) {
+		pr_info("ADAP: GM changed to %s, adaptive tuning disabled",
+			id_str);
+		adap_reset_metrics(a);
+		return;
+	}
+
 	/* Look for a per-GM profile */
 	profile = adap_find_gm_profile(a, gm_id);
 	if (profile) {

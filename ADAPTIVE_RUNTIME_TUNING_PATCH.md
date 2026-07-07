@@ -23,8 +23,8 @@ runtime: add parameter validation, audit logging, gradual ramp, and build fixes
 All runtime tuning TLVs now validate parameter ranges before applying:
 - SERVO_SETTINGS_NP: numOffsetValues [1, 100], offsetThreshold >= 0
 - PI_CONSTANTS_NP: kp/ki [0.0, 10.0], interval (0.0, 100.0]
-- CLOCK_FREQ_EST_NP: freq_est_interval [1, 4096]
-- SERVO_THRESHOLDS_NP: step_threshold/first_step_threshold [0.0, 1.0], max_frequency [0, 1e9]
+- CLOCK_FREQ_EST_NP: freq_est_interval [-8, 20], additionally guarded against unsafe sync-interval shifts
+- SERVO_THRESHOLDS_NP: step_threshold/first_step_threshold [0.0 ns, 1000000000.0 ns], max_frequency [0, 1e9]
 - TSPROC_FILTER_NP: filter_length [1, 256]
 
 Out-of-range values are rejected with MID_WRONG_VALUE error and logged.

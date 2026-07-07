@@ -3,19 +3,26 @@
 # Adaptive Runtime Tuning Test Script for linuxptp
 # Tests the PMC management interface for servo/PI/tsproc/clock parameters
 #
-# Usage: ./test_runtime_tuning.sh [pmc_port]
-# Example: ./test_runtime_tuning.sh 0
+# Usage: ./test_runtime_tuning.sh [domain]
+# Example: ./test_runtime_tuning.sh 44
 #
 
 set -e
 
-PMC_PORT=${1:-0}
+PMC_DOMAIN=${1:-${PMC_DOMAIN:-0}}
+PMC_TRANSPORT=${PMC_TRANSPORT:--u}
+PMC_BOUNDARY_HOPS=${PMC_BOUNDARY_HOPS:-0}
 PMC_DELAY=1
+PMC_ARGS=()
+if [ -n "$PMC_TRANSPORT" ]; then
+    PMC_ARGS+=("$PMC_TRANSPORT")
+fi
+PMC_ARGS+=("-d" "$PMC_DOMAIN" "-b" "$PMC_BOUNDARY_HOPS")
 
 echo "=========================================="
 echo "Adaptive Runtime Tuning Test Suite"
 echo "=========================================="
-echo "Using PMC port: $PMC_PORT"
+echo "Using PMC args: ${PMC_ARGS[*]}"
 echo ""
 
 # Helper to print test section
@@ -28,7 +35,7 @@ test_section() {
 pmc_get() {
     local tlv=$1
     echo "  [GET] $tlv:"
-    pmc -d $PMC_PORT get $tlv 2>/dev/null || echo "    (Failed to GET $tlv)"
+    pmc "${PMC_ARGS[@]}" "GET $tlv" 2>/dev/null || echo "    (Failed to GET $tlv)"
     sleep $PMC_DELAY
 }
 
@@ -37,14 +44,14 @@ pmc_set() {
     shift
     local params=$@
     echo "  [SET] $tlv $params"
-    pmc -d $PMC_PORT set $tlv $params 2>/dev/null || echo "    (Failed to SET $tlv)"
+    pmc "${PMC_ARGS[@]}" "SET $tlv $params" 2>/dev/null || echo "    (Failed to SET $tlv)"
     sleep $PMC_DELAY
 }
 
 pmc_verify() {
     local tlv=$1
     echo "  [VERIFY] $tlv after change:"
-    pmc -d $PMC_PORT get $tlv 2>/dev/null || echo "    (Failed to GET $tlv)"
+    pmc "${PMC_ARGS[@]}" "GET $tlv" 2>/dev/null || echo "    (Failed to GET $tlv)"
     sleep $PMC_DELAY
 }
 
@@ -53,7 +60,7 @@ test_section "Test 1: SERVO_SETTINGS_NP (numOffsetValues, offsetThreshold)"
 
 pmc_get "SERVO_SETTINGS_NP"
 echo "  Changing servo parameters..."
-pmc_set "SERVO_SETTINGS_NP" "numOffsetValues 8 offsetThreshold 150000"
+pmc_set "SERVO_SETTINGS_NP" "8 150000"
 pmc_verify "SERVO_SETTINGS_NP"
 
 # ============ Test 2: PI Constants ============
@@ -61,7 +68,7 @@ test_section "Test 2: PI_CONSTANTS_NP (kp, ki, interval)"
 
 pmc_get "PI_CONSTANTS_NP"
 echo "  Changing PI constants..."
-pmc_set "PI_CONSTANTS_NP" "kp 0.75 ki 0.35 interval 1.2"
+pmc_set "PI_CONSTANTS_NP" "0.75 0.35 1.2"
 pmc_verify "PI_CONSTANTS_NP"
 
 # ============ Test 3: Tsproc Filter ============
@@ -69,7 +76,7 @@ test_section "Test 3: TSPROC_FILTER_NP (filter_type, filter_length)"
 
 pmc_get "TSPROC_FILTER_NP"
 echo "  Changing tsproc filter length..."
-pmc_set "TSPROC_FILTER_NP" "filter_type 0 filter_length 10"
+pmc_set "TSPROC_FILTER_NP" "0 10"
 pmc_verify "TSPROC_FILTER_NP"
 
 # ============ Test 4: Clock Freq Est ============
@@ -77,7 +84,7 @@ test_section "Test 4: CLOCK_FREQ_EST_NP (freq_est_interval)"
 
 pmc_get "CLOCK_FREQ_EST_NP"
 echo "  Changing frequency estimation interval..."
-pmc_set "CLOCK_FREQ_EST_NP" "freq_est_interval 512"
+pmc_set "CLOCK_FREQ_EST_NP" "2"
 pmc_verify "CLOCK_FREQ_EST_NP"
 
 # ============ Test 5: Port Corrections (existing) ============
@@ -94,7 +101,7 @@ test_section "Test 6: Rapid parameter changes (stress test)"
 echo "  Performing 5 rapid servo setting changes..."
 for i in {1..5}; do
     val=$((5 + i))
-    pmc_set "SERVO_SETTINGS_NP" "numOffsetValues $val offsetThreshold $((100000 + i * 10000))"
+    pmc_set "SERVO_SETTINGS_NP" "$val $((100000 + i * 10000))"
 done
 pmc_verify "SERVO_SETTINGS_NP"
 
@@ -102,11 +109,11 @@ pmc_verify "SERVO_SETTINGS_NP"
 test_section "Test 7: Reset to conservative values"
 
 echo "  Resetting servo to defaults..."
-pmc_set "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold 100000"
+pmc_set "SERVO_SETTINGS_NP" "5 100000"
 pmc_verify "SERVO_SETTINGS_NP"
 
 echo "  Resetting PI constants to defaults..."
-pmc_set "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 1.0"
+pmc_set "PI_CONSTANTS_NP" "0.7 0.3 1.0"
 pmc_verify "PI_CONSTANTS_NP"
 
 # ============ Summary ============

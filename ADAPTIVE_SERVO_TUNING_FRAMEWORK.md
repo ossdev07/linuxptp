@@ -251,8 +251,8 @@ Direct C API (for internal libraries or daemons):
   pi_servo_set_constants(sv, 0.8, 0.4, 1.1);
 
 Remote via PMC (see companion commit 5e75b7f for details):
-  pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 8 offsetThreshold 150000
-  pmc -d 0 set PI_CONSTANTS_NP kp 0.8 ki 0.4 interval 1.1
+  pmc -d 0 "SET SERVO_SETTINGS_NP 8 150000"
+  pmc -d 0 "SET PI_CONSTANTS_NP 0.8 0.4 1.1"
 
 PERFORMANCE CHARACTERISTICS
 ---------------------------

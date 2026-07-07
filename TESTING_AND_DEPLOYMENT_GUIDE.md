@@ -316,8 +316,8 @@ sudo pmc -d 0 set PRIORITY1 val 128
 
 | Parameter           | Min | Max      | Below Min  |
 |---------------------|-----|----------|------------|
-| step_threshold      | 0.0 | 1.0      | -0.1 ✗     |
-| first_step_threshold| 0.0 | 1.0      | -0.1 ✗     |
+| step_threshold      | 0.0 ns | 1000000000.0 ns | -0.1 ✗ |
+| first_step_threshold| 0.0 ns | 1000000000.0 ns | -0.1 ✗ |
 | max_frequency       | 0   | 1000000000 | -1 ✗      |
 
 ✗ = Expected rejection with `MID_WRONG_VALUE` error
@@ -340,12 +340,12 @@ Expected: ptp4l stays responsive after all cycles.
 # Run for 1 hour with parameter changes every 30 seconds
 for i in $(seq 1 120); do
     case $((RANDOM % 3)) in
-        0) pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 8 offsetThreshold 200000
-           pmc -d 0 set PI_CONSTANTS_NP kp 0.5 ki 0.2 interval 1.0 ;;
-        1) pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 5 offsetThreshold 100000
-           pmc -d 0 set PI_CONSTANTS_NP kp 0.7 ki 0.3 interval 1.0 ;;
-        2) pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 4 offsetThreshold 50000
-           pmc -d 0 set PI_CONSTANTS_NP kp 1.0 ki 0.5 interval 1.0 ;;
+        0) pmc -d 0 "SET SERVO_SETTINGS_NP 8 200000"
+           pmc -d 0 "SET PI_CONSTANTS_NP 0.5 0.2 1.0" ;;
+        1) pmc -d 0 "SET SERVO_SETTINGS_NP 5 100000"
+           pmc -d 0 "SET PI_CONSTANTS_NP 0.7 0.3 1.0" ;;
+        2) pmc -d 0 "SET SERVO_SETTINGS_NP 4 50000"
+           pmc -d 0 "SET PI_CONSTANTS_NP 1.0 0.5 1.0" ;;
     esac
     sleep 30
 done
@@ -518,18 +518,18 @@ test_byte_order()
 "
 
 # PMC parameter changes
-pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 8 offsetThreshold 150000
-pmc -d 0 set PI_CONSTANTS_NP kp 0.75 ki 0.35 interval 1.2
-pmc -d 0 set TSPROC_FILTER_NP filter_type 0 filter_length 10
-pmc -d 0 set CLOCK_FREQ_EST_NP freq_est_interval 3
+pmc -d 0 "SET SERVO_SETTINGS_NP 8 150000"
+pmc -d 0 "SET PI_CONSTANTS_NP 0.75 0.35 1.2"
+pmc -d 0 "SET TSPROC_FILTER_NP 0 10"
+pmc -d 0 "SET CLOCK_FREQ_EST_NP 3"
 
 # Verify changes
-pmc -d 0 get SERVO_SETTINGS_NP
-pmc -d 0 get PI_CONSTANTS_NP
+pmc -d 0 "GET SERVO_SETTINGS_NP"
+pmc -d 0 "GET PI_CONSTANTS_NP"
 
 # Restore defaults
-pmc -d 0 set SERVO_SETTINGS_NP numOffsetValues 5 offsetThreshold 100000
-pmc -d 0 set PI_CONSTANTS_NP kp 0.7 ki 0.3 interval 1.0
+pmc -d 0 "SET SERVO_SETTINGS_NP 5 100000"
+pmc -d 0 "SET PI_CONSTANTS_NP 0.7 0.3 1.0"
 ```
 
 ---

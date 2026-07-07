@@ -58,14 +58,18 @@ check() {
     shift 2
     output=$("$@" 2>&1)
     rc=$?
-    if [ "$expect_success" -eq 1 ] &&
+
+    if echo "$output" | grep -qiE "(bad command|SET needs)"; then
+        echo -e "  [${FAIL}] $name (pmc command syntax error)"
+        echo "    Output: $output"
+    elif [ "$expect_success" -eq 1 ] &&
        { [ "$rc" -ne 0 ] || echo "$output" | grep -qiE "(failed|error|rejected|MANAGEMENT_ERROR_STATUS)"; }; then
         echo -e "  [${FAIL}] $name"
         echo "    Output: $output"
     elif [ "$expect_success" -eq 0 ] &&
-         { [ "$rc" -eq 0 ] && ! echo "$output" | grep -qiE "(failed|error|rejected|MANAGEMENT_ERROR_STATUS)"; }; then
+         ! echo "$output" | grep -qiE "(rejected|MANAGEMENT_ERROR_STATUS)"; then
         # Expected failure but got success
-        echo -e "  [${FAIL}] $name (expected rejection but was accepted)"
+        echo -e "  [${FAIL}] $name (expected management rejection)"
         echo "    Output: $output"
     else
         echo -e "  [${PASS}] $name"
@@ -75,13 +79,13 @@ check() {
 }
 
 pmc_get_raw() {
-    pmc "${PMC_ARGS[@]}" get "$1"
+    pmc "${PMC_ARGS[@]}" "GET $1"
 }
 
 pmc_set_raw() {
     local tlv=$1
     shift
-    pmc "${PMC_ARGS[@]}" set "$tlv" "$@"
+    pmc "${PMC_ARGS[@]}" "SET $tlv $*"
 }
 
 # ==============================================================================
@@ -134,38 +138,38 @@ echo -e "  [${INFO}] Test 2.1: Verify current mode is BALANCED (default)..."
 
 echo -e "  [${INFO}] Test 2.2: Force CONSERVATIVE via adapter API is not exposed via PMC,"
 echo "    so we simulate by checking that servo params respond to SET commands..."
-pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 8 offsetThreshold 200000"
-check "SET conservative servo params" 1 pmc_get_raw "SERVO_SETTINGS_NP"
+check "SET conservative servo params" 1 pmc_set_raw "SERVO_SETTINGS_NP" "8 200000"
+check "GET conservative servo params" 1 pmc_get_raw "SERVO_SETTINGS_NP"
 
-pmc_set_raw "PI_CONSTANTS_NP" "kp 0.5 ki 0.2 interval 1.0"
-check "SET conservative PI constants" 1 pmc_get_raw "PI_CONSTANTS_NP"
+check "SET conservative PI constants" 1 pmc_set_raw "PI_CONSTANTS_NP" "0.5 0.2 1.0"
+check "GET conservative PI constants" 1 pmc_get_raw "PI_CONSTANTS_NP"
 
-pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 16"
-check "SET conservative filter length" 1 pmc_get_raw "TSPROC_FILTER_NP"
+check "SET conservative filter length" 1 pmc_set_raw "TSPROC_FILTER_NP" "0 16"
+check "GET conservative filter length" 1 pmc_get_raw "TSPROC_FILTER_NP"
 
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 3"
-check "SET conservative freq est interval" 1 pmc_get_raw "CLOCK_FREQ_EST_NP"
+check "SET conservative freq est interval" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "3"
+check "GET conservative freq est interval" 1 pmc_get_raw "CLOCK_FREQ_EST_NP"
 
 echo ""
 echo -e "  [${INFO}] Restoring BALANCED defaults..."
-pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold 100000"
-pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 1.0"
-pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 10"
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 2"
+pmc_set_raw "SERVO_SETTINGS_NP" "5 100000"
+pmc_set_raw "PI_CONSTANTS_NP" "0.7 0.3 1.0"
+pmc_set_raw "TSPROC_FILTER_NP" "0 10"
+pmc_set_raw "CLOCK_FREQ_EST_NP" "2"
 
 echo ""
 echo -e "  [${INFO}] Test 2.3: Force AGGRESSIVE params..."
-pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 4 offsetThreshold 50000"
-check "SET aggressive servo params" 1 pmc_get_raw "SERVO_SETTINGS_NP"
+check "SET aggressive servo params" 1 pmc_set_raw "SERVO_SETTINGS_NP" "4 50000"
+check "GET aggressive servo params" 1 pmc_get_raw "SERVO_SETTINGS_NP"
 
-pmc_set_raw "PI_CONSTANTS_NP" "kp 1.0 ki 0.5 interval 1.0"
-check "SET aggressive PI constants" 1 pmc_get_raw "PI_CONSTANTS_NP"
+check "SET aggressive PI constants" 1 pmc_set_raw "PI_CONSTANTS_NP" "1.0 0.5 1.0"
+check "GET aggressive PI constants" 1 pmc_get_raw "PI_CONSTANTS_NP"
 
-pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 6"
-check "SET aggressive filter length" 1 pmc_get_raw "TSPROC_FILTER_NP"
+check "SET aggressive filter length" 1 pmc_set_raw "TSPROC_FILTER_NP" "0 6"
+check "GET aggressive filter length" 1 pmc_get_raw "TSPROC_FILTER_NP"
 
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 1"
-check "SET aggressive freq est interval" 1 pmc_get_raw "CLOCK_FREQ_EST_NP"
+check "SET aggressive freq est interval" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "1"
+check "GET aggressive freq est interval" 1 pmc_get_raw "CLOCK_FREQ_EST_NP"
 
 # ==============================================================================
 print_section "Phase 3: Per-GM Profile Simulation"
@@ -177,12 +181,16 @@ echo ""
 echo "    To manually test GM profile lookups, send a management command"
 echo "    that triggers a BMC state decision event (e.g., set priority):"
 
-old_priority=$(pmc_get_raw "PRIORITY1" | grep -oP 'val \K\d+' || echo "128")
+priority_output=$(pmc_get_raw "PRIORITY1" 2>/dev/null)
+old_priority=$(echo "$priority_output" | sed -n \
+    -e 's/.*priority1[[:space:]]*\([0-9][0-9]*\).*/\1/p' \
+    -e 's/.*val[[:space:]]*\([0-9][0-9]*\).*/\1/p' | tail -1)
+[ -n "$old_priority" ] || old_priority=128
 echo "    Current priority1: $old_priority"
 
-pmc_set_raw "PRIORITY1" "val $((old_priority + 1))"
+pmc_set_raw "PRIORITY1" "$((old_priority + 1))"
 sleep 1
-pmc_set_raw "PRIORITY1" "val $old_priority"
+pmc_set_raw "PRIORITY1" "$old_priority"
 echo -e "    Priority reset to original: ${PASS}"
 
 echo ""
@@ -194,48 +202,49 @@ print_section "Phase 4: Parameter Validation & Edge Cases"
 # ==============================================================================
 
 echo -e "  [${INFO}] Test 4.1: Boundary values for SERVO_SETTINGS_NP..."
-check "numOffsetValues=1 (min boundary)" 1 pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 1 offsetThreshold 100000"
-check "numOffsetValues=100 (max boundary)" 1 pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 100 offsetThreshold 100000"
-check "numOffsetValues=0 (below min, should reject)" 0 pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 0 offsetThreshold 100000"
-check "numOffsetValues=101 (above max, should reject)" 0 pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 101 offsetThreshold 100000"
-check "offsetThreshold=0 (min, valid)" 1 pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold 0"
-check "offsetThreshold=-1 (negative, should reject)" 0 pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold -1"
+check "numOffsetValues=1 (min boundary)" 1 pmc_set_raw "SERVO_SETTINGS_NP" "1 100000"
+check "numOffsetValues=100 (max boundary)" 1 pmc_set_raw "SERVO_SETTINGS_NP" "100 100000"
+check "numOffsetValues=0 (below min, should reject)" 0 pmc_set_raw "SERVO_SETTINGS_NP" "0 100000"
+check "numOffsetValues=101 (above max, should reject)" 0 pmc_set_raw "SERVO_SETTINGS_NP" "101 100000"
+check "offsetThreshold=0 (min, valid)" 1 pmc_set_raw "SERVO_SETTINGS_NP" "5 0"
+check "offsetThreshold=-1 (negative, should reject)" 0 pmc_set_raw "SERVO_SETTINGS_NP" "5 -1"
 
 echo ""
 echo -e "  [${INFO}] Test 4.2: Boundary values for PI_CONSTANTS_NP..."
-check "kp=0.0 (min boundary)" 1 pmc_set_raw "PI_CONSTANTS_NP" "kp 0.0 ki 0.3 interval 1.0"
-check "kp=10.0 (max boundary)" 1 pmc_set_raw "PI_CONSTANTS_NP" "kp 10.0 ki 0.3 interval 1.0"
-check "kp=-0.1 (below min, should reject)" 0 pmc_set_raw "PI_CONSTANTS_NP" "kp -0.1 ki 0.3 interval 1.0"
-check "kp=10.1 (above max, should reject)" 0 pmc_set_raw "PI_CONSTANTS_NP" "kp 10.1 ki 0.3 interval 1.0"
-check "interval=0.001 (positive, valid)" 1 pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 0.001"
-check "interval=0.0 (zero, should reject)" 0 pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 0.0"
-check "interval=-1.0 (negative, should reject)" 0 pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval -1.0"
+check "kp=0.0 (min boundary)" 1 pmc_set_raw "PI_CONSTANTS_NP" "0.0 0.3 1.0"
+check "kp=10.0 (max boundary)" 1 pmc_set_raw "PI_CONSTANTS_NP" "10.0 0.3 1.0"
+check "kp=-0.1 (below min, should reject)" 0 pmc_set_raw "PI_CONSTANTS_NP" "-0.1 0.3 1.0"
+check "kp=10.1 (above max, should reject)" 0 pmc_set_raw "PI_CONSTANTS_NP" "10.1 0.3 1.0"
+check "interval=0.001 (positive, valid)" 1 pmc_set_raw "PI_CONSTANTS_NP" "0.7 0.3 0.001"
+check "interval=0.0 (zero, should reject)" 0 pmc_set_raw "PI_CONSTANTS_NP" "0.7 0.3 0.0"
+check "interval=-1.0 (negative, should reject)" 0 pmc_set_raw "PI_CONSTANTS_NP" "0.7 0.3 -1.0"
 
 echo ""
 echo -e "  [${INFO}] Test 4.3: Boundary values for TSPROC_FILTER_NP..."
-check "filter_length=1 (min)" 1 pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 1"
-check "filter_length=256 (max)" 1 pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 256"
-check "filter_length=0 (below min, should reject)" 0 pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 0"
-check "filter_length=257 (above max, should reject)" 0 pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 257"
+check "filter_length=1 (min)" 1 pmc_set_raw "TSPROC_FILTER_NP" "0 1"
+check "filter_length=256 (max)" 1 pmc_set_raw "TSPROC_FILTER_NP" "0 256"
+check "filter_length=0 (below min, should reject)" 0 pmc_set_raw "TSPROC_FILTER_NP" "0 0"
+check "filter_length=257 (above max, should reject)" 0 pmc_set_raw "TSPROC_FILTER_NP" "0 257"
 
 echo ""
 echo -e "  [${INFO}] Test 4.4: Boundary values for CLOCK_FREQ_EST_NP..."
-check "freq_est_interval=-8 (min)" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval -8"
-check "freq_est_interval=20 (max)" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 20"
-check "freq_est_interval=-9 (below min, should reject)" 0 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval -9"
-check "freq_est_interval=21 (above max, should reject)" 0 pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 21"
+check "freq_est_interval=-8 (min)" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "-8"
+check "freq_est_interval=20 (max)" 1 pmc_set_raw "CLOCK_FREQ_EST_NP" "20"
+check "freq_est_interval=-9 (below min, should reject)" 0 pmc_set_raw "CLOCK_FREQ_EST_NP" "-9"
+check "freq_est_interval=21 (above max, should reject)" 0 pmc_set_raw "CLOCK_FREQ_EST_NP" "21"
 
 echo ""
 echo -e "  [${INFO}] Test 4.5: Boundary values for SERVO_THRESHOLDS_NP..."
-check "step_threshold=0.0 (min)" 1 pmc_set_raw "SERVO_THRESHOLDS_NP" "step_threshold 0.0 first_step_threshold 0.0 max_frequency 900000000"
-check "step_threshold=1.0 (max)" 1 pmc_set_raw "SERVO_THRESHOLDS_NP" "step_threshold 1.0 first_step_threshold 0.0 max_frequency 900000000"
-check "step_threshold=-0.1 (negative, should reject)" 0 pmc_set_raw "SERVO_THRESHOLDS_NP" "step_threshold -0.1 first_step_threshold 0.0 max_frequency 900000000"
+check "step_threshold=0.0 (min)" 1 pmc_set_raw "SERVO_THRESHOLDS_NP" "0.0 0.0 900000000"
+check "step_threshold=1000000000.0 (max)" 1 pmc_set_raw "SERVO_THRESHOLDS_NP" "1000000000.0 0.0 900000000"
+check "step_threshold=-0.1 (negative, should reject)" 0 pmc_set_raw "SERVO_THRESHOLDS_NP" "-0.1 0.0 900000000"
+check "step_threshold=1000000000.1 (above max, should reject)" 0 pmc_set_raw "SERVO_THRESHOLDS_NP" "1000000000.1 0.0 900000000"
 
 # Restore normal values
-pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold 100000" > /dev/null
-pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 1.0" > /dev/null
-pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 10" > /dev/null
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 2" > /dev/null
+pmc_set_raw "SERVO_SETTINGS_NP" "5 100000" > /dev/null
+pmc_set_raw "PI_CONSTANTS_NP" "0.7 0.3 1.0" > /dev/null
+pmc_set_raw "TSPROC_FILTER_NP" "0 10" > /dev/null
+pmc_set_raw "CLOCK_FREQ_EST_NP" "2" > /dev/null
 
 # ==============================================================================
 print_section "Phase 5: Stress Test – Rapid Parameter Cycling"
@@ -246,16 +255,16 @@ for i in $(seq 1 10); do
     # Alternate between conservative, balanced, aggressive values
     case $((i % 3)) in
         0)
-            pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 4 offsetThreshold 50000" > /dev/null
-            pmc_set_raw "PI_CONSTANTS_NP" "kp 1.0 ki 0.5 interval 1.0" > /dev/null
+            pmc_set_raw "SERVO_SETTINGS_NP" "4 50000" > /dev/null
+            pmc_set_raw "PI_CONSTANTS_NP" "1.0 0.5 1.0" > /dev/null
             ;;
         1)
-            pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold 100000" > /dev/null
-            pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 1.0" > /dev/null
+            pmc_set_raw "SERVO_SETTINGS_NP" "5 100000" > /dev/null
+            pmc_set_raw "PI_CONSTANTS_NP" "0.7 0.3 1.0" > /dev/null
             ;;
         2)
-            pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 8 offsetThreshold 200000" > /dev/null
-            pmc_set_raw "PI_CONSTANTS_NP" "kp 0.5 ki 0.2 interval 1.0" > /dev/null
+            pmc_set_raw "SERVO_SETTINGS_NP" "8 200000" > /dev/null
+            pmc_set_raw "PI_CONSTANTS_NP" "0.5 0.2 1.0" > /dev/null
             ;;
     esac
     sleep 0.2
@@ -268,11 +277,11 @@ print_section "Phase 6: Restoration & Cleanup"
 # ==============================================================================
 
 echo -e "  [${INFO}] Restoring all parameters to defaults..."
-pmc_set_raw "SERVO_SETTINGS_NP" "numOffsetValues 5 offsetThreshold 100000" > /dev/null
-pmc_set_raw "PI_CONSTANTS_NP" "kp 0.7 ki 0.3 interval 1.0" > /dev/null
-pmc_set_raw "TSPROC_FILTER_NP" "filter_type 0 filter_length 10" > /dev/null
-pmc_set_raw "CLOCK_FREQ_EST_NP" "freq_est_interval 2" > /dev/null
-pmc_set_raw "SERVO_THRESHOLDS_NP" "step_threshold 0.0 first_step_threshold 0.0 max_frequency 900000000" > /dev/null
+pmc_set_raw "SERVO_SETTINGS_NP" "5 100000" > /dev/null
+pmc_set_raw "PI_CONSTANTS_NP" "0.7 0.3 1.0" > /dev/null
+pmc_set_raw "TSPROC_FILTER_NP" "0 10" > /dev/null
+pmc_set_raw "CLOCK_FREQ_EST_NP" "2" > /dev/null
+pmc_set_raw "SERVO_THRESHOLDS_NP" "0.0 0.0 900000000" > /dev/null
 
 echo -e "  [${INFO}] Verifying final state..."
 echo "    Servo settings:"

@@ -1978,14 +1978,14 @@ int clock_manage(struct clock *c, struct port *p, struct ptp_message *msg)
 			if (mgt_set->length >= 2 + (int)sizeof(struct servo_thresholds_np)) {
 				struct servo_thresholds_np *st =
 					(struct servo_thresholds_np *) mgt_set->data;
-				if (st->step_threshold < 0.0 || st->step_threshold > 1.0) {
-					pr_err("REJECTED: step_threshold %f out of range [0.0, 1.0]",
+				if (st->step_threshold < 0.0 || st->step_threshold > 1e9) {
+					pr_err("REJECTED: step_threshold %f out of range [0.0, 1000000000.0]",
 					       st->step_threshold);
 					clock_management_send_error(p, msg, MID_WRONG_VALUE);
 					return changed;
 				}
-				if (st->first_step_threshold < 0.0 || st->first_step_threshold > 1.0) {
-					pr_err("REJECTED: first_step_threshold %f out of range [0.0, 1.0]",
+				if (st->first_step_threshold < 0.0 || st->first_step_threshold > 1e9) {
+					pr_err("REJECTED: first_step_threshold %f out of range [0.0, 1000000000.0]",
 					       st->first_step_threshold);
 					clock_management_send_error(p, msg, MID_WRONG_VALUE);
 					return changed;
