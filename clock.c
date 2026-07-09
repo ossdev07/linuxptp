@@ -880,7 +880,10 @@ static int clock_management_set(struct clock *c, struct port *p,
 	case MID_CLOCK_FREQ_EST_NP:
 		{
 			struct clock_freq_est_np *cf = (struct clock_freq_est_np *) tlv->data;
+			int old_freq_est_interval = clock_get_freq_est_interval(c);
 			clock_set_freq_est_interval(c, cf->freq_est_interval);
+			pr_tune("freq_est_interval", old_freq_est_interval,
+				cf->freq_est_interval, "%d");
 			respond = 1;
 			*changed = 1;
 		}
@@ -891,10 +894,23 @@ static int clock_management_set(struct clock *c, struct port *p,
 				(struct servo_thresholds_np *) tlv->data;
 			struct servo *sv = clock_servo(c);
 			if (sv) {
+				double old_step_threshold =
+					servo_get_step_threshold(sv);
+				double old_first_step_threshold =
+					servo_get_first_step_threshold(sv);
+				int old_max_frequency =
+					servo_get_max_frequency(sv);
 				servo_set_step_threshold(sv, st->step_threshold);
 				servo_set_first_step_threshold(sv,
 							       st->first_step_threshold);
 				servo_set_max_frequency(sv, st->max_frequency);
+				pr_tune("step_threshold", old_step_threshold,
+					st->step_threshold, "%.6f");
+				pr_tune("first_step_threshold",
+					old_first_step_threshold,
+					st->first_step_threshold, "%.6f");
+				pr_tune("max_frequency", old_max_frequency,
+					st->max_frequency, "%d");
 				respond = 1;
 				*changed = 1;
 			}
