@@ -87,10 +87,16 @@ static const struct adap_params default_aggressive = {
 /*
  * Thresholds for network condition classification.
  */
-#define ADAP_JITTER_LOW_NS      100.0   /* below this = stable */
-#define ADAP_JITTER_HIGH_NS     500.0   /* above this = noisy */
-#define ADAP_LOSS_THRESHOLD     5       /* lost syncs in window */
-#define ADAP_STABLE_WATERMARK   20      /* consecutive LOCKED_STABLE samples */
+#define ADAP_JITTER_LOW_NS              100.0  /* below this = stable */
+#define ADAP_JITTER_ENTER_CONS_NS       650.0  /* enter conservative */
+#define ADAP_JITTER_EXIT_CONS_NS        350.0  /* leave conservative */
+#define ADAP_JITTER_EXIT_AGGR_NS        250.0  /* leave aggressive */
+#define ADAP_JITTER_HIGH_NS             ADAP_JITTER_ENTER_CONS_NS
+#define ADAP_LOSS_THRESHOLD             5      /* lost syncs in window */
+#define ADAP_STABLE_WATERMARK           20     /* aggressive candidate */
+#define ADAP_CONS_EXIT_STABLE_WATERMARK 60     /* conservative hold */
+#define ADAP_SWITCH_CONFIRM_COUNT       3      /* repeated decisions */
+#define ADAP_MIN_MODE_DWELL_NS          (30ULL * 1000000000ULL)
 
 /*
  * Internal structure for the adaptive engine.
@@ -123,8 +129,26 @@ struct adap {
 
 	/* Evaluation timing */
 	uint64_t        last_eval_ts;
+	uint64_t        last_mode_change_ts;
 	double          eval_interval_s;
+
+	/* Auto-mode switch debounce */
+	enum adap_tuning_mode pending_mode;
+	int             pending_count;
 };
+
+static const char *adap_mode_name(enum adap_tuning_mode mode)
+{
+	switch (mode) {
+	case ADAP_MODE_CONSERVATIVE:
+		return "conservative";
+	case ADAP_MODE_AGGRESSIVE:
+		return "aggressive";
+	case ADAP_MODE_BALANCED:
+	default:
+		return "balanced";
+	}
+}
 
 /* Helper: compute mean of an int64_t array */
 static double compute_mean(const int64_t *samples, int count)
@@ -262,10 +286,13 @@ struct adap *adap_create(struct config *cfg)
 	}
 
 	a->last_eval_ts = 0;
+	a->last_mode_change_ts = 0;
 	a->last_sample_ts = 0;
 	a->expected_sample_interval_ns = 0.0;
 	a->expected_samples = 0;
 	a->missed_samples = 0;
+	a->pending_mode = a->mode;
+	a->pending_count = 0;
 
 	/* Allocate sample buffers */
 	a->offset_samples = calloc(window, sizeof(int64_t));
@@ -382,6 +409,8 @@ void adap_reset_metrics(struct adap *a)
 	a->last_sample_ts = 0;
 	a->expected_sample_interval_ns = 0.0;
 	a->last_eval_ts = 0;
+	a->pending_mode = a->mode;
+	a->pending_count = 0;
 	memset(&a->metrics, 0, sizeof(a->metrics));
 	a->metrics.sampling_interval_s = a->eval_interval_s;
 
@@ -411,7 +440,7 @@ static void adap_compute_metrics(struct adap *a)
 	a->metrics.sample_count = count;
 }
 
-static enum adap_tuning_mode adap_decide_mode(struct adap *a)
+static enum adap_tuning_mode __attribute__((unused)) adap_decide_mode(struct adap *a)
 {
 	double jitter = a->metrics.offset_jitter_ns;
 	int loss = a->metrics.packet_loss_count;
@@ -441,6 +470,90 @@ static enum adap_tuning_mode adap_decide_mode(struct adap *a)
 
 	/* Default → balanced */
 	return ADAP_MODE_BALANCED;
+}
+
+static enum adap_tuning_mode adap_decide_mode_stable(struct adap *a)
+{
+	double jitter = a->metrics.offset_jitter_ns;
+	int loss = a->metrics.packet_loss_count;
+	int stable = a->metrics.state_stable_count;
+
+	if (loss >= ADAP_LOSS_THRESHOLD ||
+	    a->metrics.current_state != SERVO_LOCKED_STABLE) {
+		pr_debug("ADAP: conservative candidate loss=%d state=%d",
+			 loss, a->metrics.current_state);
+		return ADAP_MODE_CONSERVATIVE;
+	}
+
+	switch (a->mode) {
+	case ADAP_MODE_CONSERVATIVE:
+		if (jitter < ADAP_JITTER_EXIT_CONS_NS &&
+		    stable >= ADAP_CONS_EXIT_STABLE_WATERMARK) {
+			pr_debug("ADAP: balanced candidate jitter=%.1f < %.1f stable=%d",
+				 jitter, ADAP_JITTER_EXIT_CONS_NS, stable);
+			return ADAP_MODE_BALANCED;
+		}
+		return ADAP_MODE_CONSERVATIVE;
+	case ADAP_MODE_AGGRESSIVE:
+		if (jitter > ADAP_JITTER_ENTER_CONS_NS)
+			return ADAP_MODE_CONSERVATIVE;
+		if (jitter > ADAP_JITTER_EXIT_AGGR_NS)
+			return ADAP_MODE_BALANCED;
+		return ADAP_MODE_AGGRESSIVE;
+	case ADAP_MODE_BALANCED:
+	default:
+		if (jitter > ADAP_JITTER_ENTER_CONS_NS) {
+			pr_debug("ADAP: conservative candidate jitter=%.1f > %.1f",
+				 jitter, ADAP_JITTER_ENTER_CONS_NS);
+			return ADAP_MODE_CONSERVATIVE;
+		}
+		if (jitter < ADAP_JITTER_LOW_NS &&
+		    stable >= ADAP_STABLE_WATERMARK) {
+			pr_debug("ADAP: aggressive candidate jitter=%.1f < %.1f stable=%d",
+				 jitter, ADAP_JITTER_LOW_NS, stable);
+			return ADAP_MODE_AGGRESSIVE;
+		}
+		return ADAP_MODE_BALANCED;
+	}
+}
+
+static int adap_mode_switch_ready(struct adap *a, enum adap_tuning_mode mode,
+				  uint64_t now)
+{
+	uint64_t elapsed;
+
+	if (mode == a->mode) {
+		a->pending_mode = a->mode;
+		a->pending_count = 0;
+		return 0;
+	}
+
+	if (a->last_mode_change_ts) {
+		elapsed = now - a->last_mode_change_ts;
+		if (elapsed < ADAP_MIN_MODE_DWELL_NS) {
+			pr_debug("ADAP: holding %s, candidate=%s dwell=%llu/%llu ns",
+				 adap_mode_name(a->mode), adap_mode_name(mode),
+				 (unsigned long long)elapsed,
+				 (unsigned long long)ADAP_MIN_MODE_DWELL_NS);
+			return 0;
+		}
+	}
+
+	if (a->pending_mode != mode) {
+		a->pending_mode = mode;
+		a->pending_count = 1;
+		return 0;
+	}
+
+	a->pending_count++;
+	if (a->pending_count < ADAP_SWITCH_CONFIRM_COUNT) {
+		pr_debug("ADAP: candidate=%s confirm=%d/%d",
+			 adap_mode_name(mode), a->pending_count,
+			 ADAP_SWITCH_CONFIRM_COUNT);
+		return 0;
+	}
+
+	return 1;
 }
 
 static const struct adap_params *adap_get_mode_params(enum adap_tuning_mode mode)
@@ -589,21 +702,27 @@ void adap_evaluate(struct adap *a, struct clock *c)
 
 	/* Decide on new mode (only if not manually overridden) */
 	if (!a->manual_mode) {
-		new_mode = adap_decide_mode(a);
+		new_mode = adap_decide_mode_stable(a);
 
-		if (new_mode != a->mode) {
+		if (adap_mode_switch_ready(a, new_mode, now)) {
 			const struct adap_params *params;
 
-			pr_info("ADAP: switching mode %d -> %d "
-				"(jitter=%.1f loss=%d stable=%d)",
-				a->mode, new_mode,
+			pr_info("ADAP: switching mode %s -> %s "
+				"(jitter=%.1f loss=%d stable=%d state=%d)",
+				adap_mode_name(a->mode),
+				adap_mode_name(new_mode),
 				a->metrics.offset_jitter_ns,
 				a->metrics.packet_loss_count,
-				a->metrics.state_stable_count);
+				a->metrics.state_stable_count,
+				a->metrics.current_state);
 
 			a->mode = new_mode;
+			a->last_mode_change_ts = now;
+			a->pending_mode = a->mode;
+			a->pending_count = 0;
 			params = adap_get_mode_params(new_mode);
 			adap_apply_params(c, (struct adap_params *)params);
+			adap_reset_metrics(a);
 		}
 	}
 
