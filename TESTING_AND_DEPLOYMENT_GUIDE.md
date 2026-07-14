@@ -231,7 +231,7 @@ adap_gm_profile_file /etc/linuxptp/adap-gm-profiles.csv
 Example profile file:
 ```text
 # gmIdentity,label,numOffsetValues,offsetThreshold,kp,ki,interval,filterLength,freqEstInterval,stepThresholdNs,firstStepThresholdNs,maxFrequencyPpb
-001ba1.2345.6789ab,DC-east-core,8,200000,0.5,0.2,1.0,16,3,20000,20000,900000000
+001ba1.2345.6789ab,DC-east-core,8,200000,0.5,0.2,1.0,16,3,0,20000,900000000
 ```
 
 Expected behaviour on GM switch to this identity:
@@ -395,8 +395,8 @@ pi_integral_const         0.0
 Per-GM profile file format:
 ```text
 # gmIdentity,label,numOffsetValues,offsetThreshold,kp,ki,interval,filterLength,freqEstInterval,stepThresholdNs,firstStepThresholdNs,maxFrequencyPpb
-001ba1.2345.6789ab,Nokia-core-A,8,200000,0.5,0.2,1.0,16,3,20000,20000,900000000
-001ba1.2345.6789ac,Nokia-edge-B,5,100000,0.7,0.3,1.0,10,2,20000,20000,900000000
+001ba1.2345.6789ab,Nokia-core-A,8,200000,0.5,0.2,1.0,16,3,0,20000,900000000
+001ba1.2345.6789ac,Nokia-edge-B,5,100000,0.7,0.3,1.0,10,2,0,20000,900000000
 ```
 
 ### 8.2 Deployment Profiles

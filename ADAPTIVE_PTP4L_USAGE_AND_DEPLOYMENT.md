@@ -38,9 +38,13 @@ The built-in profile values are:
 | `ki` | 0.2 | 0.3 | 0.5 |
 | `filter_length` | 16 | 10 | 6 |
 | `freq_est_interval` | 3 | 2 | 1 |
-| `step_threshold` | 20000 ns | 20000 ns | 20000 ns |
+| `step_threshold` | 0 ns | 0 ns | 0 ns |
 | `first_step_threshold` | 20000 ns | 20000 ns | 20000 ns |
 | `max_frequency` | 900000000 ppb | 900000000 ppb | 900000000 ppb |
+
+Recurring clock steps are disabled in every built-in mode so transient field
+jitter is corrected by the servo without dropping lock. The 20000 ns first-step
+threshold remains enabled for initial clock acquisition.
 
 ## 2. Basic Configuration
 
@@ -105,7 +109,7 @@ When a GM is selected:
 ```text
 selected best master clock 00049f.fffe.07ba9b
 ADAP: GM changed to 00049f.fffe.07ba9b, using default balanced mode
-ADAP: applied params: numOff=5 offThr=100000 kp=0.700 ki=0.300 fltLen=10 freqEst=2 stepThr=20000 maxFreq=900000000
+ADAP: applied params: numOff=5 offThr=100000 kp=0.700 ki=0.300 fltLen=10 freqEst=2 stepThr=0 firstStepThr=20000 maxFreq=900000000
 ```
 
 ## 4. Meaning of `adap_tuning_enabled` and `adap_tuning_mode`
@@ -155,8 +159,8 @@ CSV format:
 
 ```text
 # gmIdentity,label,numOffsetValues,offsetThreshold,kp,ki,interval,filterLength,freqEstInterval,stepThresholdNs,firstStepThresholdNs,maxFrequencyPpb
-00049f.fffe.07ba9b,Nokia-GM-A-clean,4,50000,1.0,0.5,1.0,6,1,20000,20000,900000000
-00049f.fffe.065439,Nokia-GM-B-field,8,200000,0.5,0.2,1.0,16,3,20000,20000,900000000
+00049f.fffe.07ba9b,Nokia-GM-A-clean,4,50000,1.0,0.5,1.0,6,1,0,20000,900000000
+00049f.fffe.065439,Nokia-GM-B-field,8,200000,0.5,0.2,1.0,16,3,0,20000,900000000
 ```
 
 Use the linuxptp clock identity format shown in ptp4l logs, for example
@@ -166,7 +170,7 @@ Expected log when a known GM is selected:
 
 ```text
 ADAP: GM changed to 00049f.fffe.065439, applying profile 'Nokia-GM-B-field'
-ADAP: applied params: numOff=8 offThr=200000 kp=0.500 ki=0.200 fltLen=16 freqEst=3 stepThr=20000 maxFreq=900000000
+ADAP: applied params: numOff=8 offThr=200000 kp=0.500 ki=0.200 fltLen=16 freqEst=3 stepThr=0 firstStepThr=20000 maxFreq=900000000
 ```
 
 If there is no matching GM profile, ptp4l falls back to the configured mode.
@@ -212,7 +216,7 @@ Use this sequence for a clean lab demonstration:
 
 ```text
 ADAP: switching mode 1 -> 0 (jitter=623.8 loss=0 stable=0)
-ADAP: applied params: numOff=8 offThr=200000 kp=0.500 ki=0.200 fltLen=16 freqEst=3 stepThr=20000 maxFreq=900000000
+ADAP: applied params: numOff=8 offThr=200000 kp=0.500 ki=0.200 fltLen=16 freqEst=3 stepThr=0 firstStepThr=20000 maxFreq=900000000
 ```
 
 7. Remove impairment and observe return toward balanced/aggressive behavior.
@@ -337,4 +341,3 @@ Watch ADAP logs:
 ```bash
 journalctl -u ptp4l -f | grep "ADAP:"
 ```
-

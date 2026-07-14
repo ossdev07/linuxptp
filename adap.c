@@ -40,7 +40,8 @@
  */
 #define ADAP_DEFAULT_SAMPLE_WINDOW  10
 #define ADAP_DEFAULT_EVAL_INTERVAL  1.0  /* seconds */
-#define ADAP_DEFAULT_STEP_THRESHOLD_NS 20000.0
+#define ADAP_DEFAULT_STEP_THRESHOLD_NS       0.0
+#define ADAP_DEFAULT_FIRST_STEP_THRESHOLD_NS 20000.0
 
 /* Conservative mode (noisy/jittery networks) */
 static const struct adap_params default_conservative = {
@@ -52,7 +53,7 @@ static const struct adap_params default_conservative = {
 	.filter_length          = 16,
 	.freq_est_interval      = 3,
 	.step_threshold_ns      = ADAP_DEFAULT_STEP_THRESHOLD_NS,
-	.first_step_threshold_ns = ADAP_DEFAULT_STEP_THRESHOLD_NS,
+	.first_step_threshold_ns = ADAP_DEFAULT_FIRST_STEP_THRESHOLD_NS,
 	.max_frequency_ppb      = 900000000,
 };
 
@@ -66,7 +67,7 @@ static const struct adap_params default_balanced = {
 	.filter_length          = 10,
 	.freq_est_interval      = 2,
 	.step_threshold_ns      = ADAP_DEFAULT_STEP_THRESHOLD_NS,
-	.first_step_threshold_ns = ADAP_DEFAULT_STEP_THRESHOLD_NS,
+	.first_step_threshold_ns = ADAP_DEFAULT_FIRST_STEP_THRESHOLD_NS,
 	.max_frequency_ppb      = 900000000,
 };
 
@@ -80,7 +81,7 @@ static const struct adap_params default_aggressive = {
 	.filter_length          = 6,
 	.freq_est_interval      = 1,
 	.step_threshold_ns      = ADAP_DEFAULT_STEP_THRESHOLD_NS,
-	.first_step_threshold_ns = ADAP_DEFAULT_STEP_THRESHOLD_NS,
+	.first_step_threshold_ns = ADAP_DEFAULT_FIRST_STEP_THRESHOLD_NS,
 	.max_frequency_ppb      = 900000000,
 };
 
@@ -653,11 +654,13 @@ void adap_apply_params(struct clock *c, struct adap_params *params)
 	clock_set_freq_est_interval(c, params->freq_est_interval);
 
 	pr_info("ADAP: applied params: numOff=%d offThr=%d kp=%.3f ki=%.3f "
-		"fltLen=%d freqEst=%d stepThr=%.0f maxFreq=%d",
+		"fltLen=%d freqEst=%d stepThr=%.0f firstStepThr=%.0f "
+		"maxFreq=%d",
 		params->num_offset_values, params->offset_threshold,
 		params->kp, params->ki,
 		params->filter_length, params->freq_est_interval,
-		params->step_threshold_ns, params->max_frequency_ppb);
+		params->step_threshold_ns, params->first_step_threshold_ns,
+		params->max_frequency_ppb);
 }
 
 void adap_evaluate(struct adap *a, struct clock *c)
